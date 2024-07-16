@@ -34,8 +34,8 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          echo $(pwd)
           make -C rvv-intrinsic-generator report-gnu GNU_TOOLCHAIN_DIR=$(pwd)/../riscv-gnu-toolchain
-
       - name: Check gcc result
         run: |
           tail -n 17 $(pwd)/../riscv-gnu-toolchain/build-gcc-newlib-stage2/gcc/testsuite/gcc/gcc.log
