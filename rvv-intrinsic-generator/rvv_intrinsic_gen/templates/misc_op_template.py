@@ -30,9 +30,11 @@ from enums import InstType
 from generator import CompatibleHeaderGenerator
 
 
-def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
+def render(G, op_list, type_list, sew_list, lmul_list, decorator_list,
+           description):
   #pylint: disable=invalid-name
   # FIXME: Renaming 'G' to 'g' all in once later.
+  G.emit_function_group_description(description)
   G.inst_group_prologue()
   # vundefine for non-tuple
   for decorator in decorator_list:
@@ -40,8 +42,10 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
       break
     decorator.write_text_header(G)
 
+    inst_type = None
     for args in prod(OP=op_list, TYPE=type_list, SEW=sew_list, LMUL=lmul_list):
       type_helper = TypeHelper(**args)
+      inst_type = InstType.UNKNOWN
       if args["OP"] not in ["vundefined"]:
         break
       if args["TYPE"] == "float" and args["SEW"] == 8:
@@ -72,6 +76,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
         LMUL=lmul_list,
         NF=nf_list):
       type_helper = TypeHelper(**args)
+      inst_type = InstType.UNKNOWN
       if args["OP"] not in ["vundefined"]:
         break
       if args["TYPE"] == "float" and args["SEW"] == 8:
@@ -93,6 +98,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
         SEW=sew_list,
         LMUL=lmul_list,
         DST_LMUL=lmul_list):
+      assert args["TYPE"] is not None
       op = args["OP"]
       src_lmul = args["LMUL"]
       dst_lmul = args["DST_LMUL"]
@@ -106,7 +112,10 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
           continue
       type_helper = TypeHelper(**args)
       inst_info = InstInfo.get(args, decorator, inst_type)
-      args["TYPE1"] = args["TYPE"][0]
+      if args["TYPE"] == "bfloat":
+        args["TYPE1"] = args["TYPE"][0:2]
+      else:
+        args["TYPE1"] = args["TYPE"][0]
       func_name = "{OP}_{TYPE1}{SEW}m{LMUL}_{TYPE1}{SEW}m{DST_LMUL}".format_map(
           args)
 
@@ -170,6 +179,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
         SEW=sew_list,
         LMUL=lmul_list,
         NF=nf_list):
+      assert args["NF"] is not None
       type_helper = TypeHelper(**args)
 
       # This intrinsic appears after v0.12

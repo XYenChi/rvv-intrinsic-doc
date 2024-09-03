@@ -27,13 +27,16 @@ from enums import InstType
 from enums import ExtraAttr
 
 
-def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
+def render(G, op_list, type_list, sew_list, lmul_list, decorator_list,
+           description):
   #pylint: disable=invalid-name
   # FIXME: Renaming 'G' to 'g' all in once later.
+  G.emit_function_group_description(description)
   G.inst_group_prologue()
   for decorator in decorator_list:
     decorator.write_text_header(G)
     for args in prod(OP=op_list, TYPE=type_list, SEW=sew_list, LMUL=lmul_list):
+      assert args["TYPE"] is not None
       data_type = args["TYPE"]
       op = args["OP"]
 
@@ -41,7 +44,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
       if "int" in data_type and decorator.flags & ExtraAttr.HAS_FRM:
         continue
 
-      if data_type == "float":
+      if "float" in data_type:
         args["S_TYPE"] = "f"
         args["OP"] = "f" + op
         inst_type = InstType.VVF
@@ -129,14 +132,22 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
               rs1=type_helper.s,
               vs2=type_helper.v,
               vl=type_helper.size_t)
-      elif data_type == "float" and "w" in op:
+      elif "float" in data_type and "w" in op:
+        # Vector BF16 widening multiply-accumulate computes into FP32 values
+        if args["TYPE"] == "bfloat":
+          args["TYPE"] = "float"
+          dst_type_helper = TypeHelper(**args)
+          dst_type = dst_type_helper.wv
+        else:
+          dst_type = type_helper.wv
+
         G.func(
             inst_info_vv,
             name="{OP}_vv_{TYPE}{WSEW}m{WLMUL}".format_map(args) +
             decorator.func_suffix,
-            return_type=type_helper.wv,
+            return_type=dst_type,
             **decorator.mask_args(type_helper.m, type_helper.v),
-            vd=type_helper.wv,
+            vd=dst_type,
             vs1=type_helper.v,
             vs2=type_helper.v,
             **decorator.extra_csr_args(type_helper.uint),
@@ -145,9 +156,9 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
             inst_info_vs,
             name="{OP}_v{S_TYPE}_{TYPE}{WSEW}m{WLMUL}".format_map(args) +
             decorator.func_suffix,
-            return_type=type_helper.wv,
+            return_type=dst_type,
             **decorator.mask_args(type_helper.m, type_helper.v),
-            vd=type_helper.wv,
+            vd=dst_type,
             vs1=type_helper.s,
             vs2=type_helper.v,
             **decorator.extra_csr_args(type_helper.uint),

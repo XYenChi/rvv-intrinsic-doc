@@ -25,14 +25,17 @@ from enums import InstInfo
 from enums import InstType
 
 
-def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
+def render(G, op_list, type_list, sew_list, lmul_list, decorator_list,
+           description):
   #pylint: disable=invalid-name
   # FIXME: Renaming 'G' to 'g' all in once later.
+  G.emit_function_group_description(description)
   G.inst_group_prologue()
   for decorator in decorator_list:
     decorator.write_text_header(G)
     # treat sew_list as MLEN
     for args in prod(OP=op_list, TYPE=type_list, MLEN=sew_list):
+      assert args["OP"] is not None
       op = args["OP"]
       if op not in ["cpop", "first"]:
         args["OP"] = "m" + args["OP"]
@@ -71,7 +74,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
         G.func(
             inst_info_m,
             name="{OP}_m_b{MLEN}".format_map(args) + decorator.func_suffix,
-            return_type=type_helper.uint,
+            return_type=type_helper.ulong,
             **decorator.mask_args(type_helper.m),
             vs2=type_helper.m,
             vl=type_helper.size_t)
@@ -79,7 +82,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
         G.func(
             inst_info_m,
             name="{OP}_m_b{MLEN}".format_map(args) + decorator.func_suffix,
-            return_type=type_helper.int,
+            return_type=type_helper.long,
             **decorator.mask_args(type_helper.m),
             vs2=type_helper.m,
             vl=type_helper.size_t)
@@ -94,6 +97,7 @@ def render(G, op_list, type_list, sew_list, lmul_list, decorator_list):
             vl=type_helper.size_t)
 
     for args in prod(OP=op_list, TYPE=type_list, SEW=sew_list, LMUL=lmul_list):
+      assert args["OP"] is not None
       op = args["OP"]
       type_helper = TypeHelper(**args)
 
