@@ -94,6 +94,12 @@ class MemType(enum.Enum):
   STORE = 2
   AMO = 3
 
+class Vendor(enum.Enum):
+  """
+  Enum of vendor intrinsic type.
+  """
+  SIFIVE = sf
+
 
 @unique
 class ToolChainType(enum.Enum):
@@ -131,8 +137,7 @@ class ExtraAttr:
   IS_RED_TAMA = 1 << 18  # for 0.10 (LegacyIntrinsicDecorator)
   HAS_VXRM = 1 << 19
   HAS_FRM = 1 << 20
-
-
+  IS_VENDOR = 1 << 21 # add attribute for different parsing condition
 class InstInfo:
   """
   Structure that stores the information of the intrinsic.
@@ -145,7 +150,8 @@ class InstInfo:
                inst_type=InstType.UNKNOWN,
                mem_type=MemType.NO_MEM,
                extra_attr=ExtraAttr.NO_ATTR,
-               NF=1):
+               NF=1
+               vendor=):
     #pylint: disable=invalid-name
     self.SEW = SEW
     self.LMUL = LMUL
@@ -154,6 +160,7 @@ class InstInfo:
     self.mem_type = mem_type
     self.extra_attr = extra_attr
     self.NF = NF
+    self.vendor = vendor
 
   def load_p(self):
     return self.mem_type == MemType.LOAD
