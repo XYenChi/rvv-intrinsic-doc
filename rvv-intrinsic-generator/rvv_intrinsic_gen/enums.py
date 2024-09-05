@@ -94,11 +94,11 @@ class MemType(enum.Enum):
   STORE = 2
   AMO = 3
 
-class Vendor(enum.Enum):
-  """
-  Enum of vendor intrinsic type.
-  """
-  SIFIVE = sf
+# class Vendor(enum.Enum):
+#   """
+#   Enum of vendor intrinsic type.
+#   """
+#   SIFIVE = sf
 
 
 @unique
@@ -150,8 +150,8 @@ class InstInfo:
                inst_type=InstType.UNKNOWN,
                mem_type=MemType.NO_MEM,
                extra_attr=ExtraAttr.NO_ATTR,
-               NF=1
-               vendor=):
+               NF=1,
+               vendor=False):
     #pylint: disable=invalid-name
     self.SEW = SEW
     self.LMUL = LMUL
