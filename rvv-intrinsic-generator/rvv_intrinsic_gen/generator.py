@@ -64,7 +64,8 @@ class Generator(ABC):
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     # pylint: disable=unused-argument
     # NOTE: 'title' and 'link' are only used in DocGenerator and
     # OverloadedDocGenerator. Probably need some decoupling here.
@@ -75,7 +76,8 @@ class Generator(ABC):
         sew_list=sew_list,
         lmul_list=lmul_list,
         decorator_list=decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
   def start_group(self, group_name):
     raise NotImplementedError
@@ -359,7 +361,8 @@ class DocGenerator(Generator):
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     self.write_title(title, link)
     if self.has_tail_policy and len(decorator_list) == 0:
       s = "Intrinsics here don't have a policy variant.\n"
@@ -378,7 +381,8 @@ class DocGenerator(Generator):
         sew_list,
         lmul_list,
         decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
   def func(self, inst_info, name, return_type, **kwargs):
     name = Generator.func_name(name)
@@ -437,7 +441,8 @@ class OverloadedDocGenerator(DocGenerator):
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     self.do_not_have_overloaded_variant = True
     for op in op_list:
       if Generator.is_support_overloaded(op):
@@ -451,7 +456,8 @@ class OverloadedDocGenerator(DocGenerator):
         sew_list,
         lmul_list,
         decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
   def func(self, inst_info, name, return_type, **kwargs):
     func_name = Generator.func_name(name)
@@ -504,8 +510,18 @@ class APITestGenerator(Generator):
   def inst_group_epilogue(self):
     return ""
 
-  def write_file_header(self, has_float_type, has_bfloat16_type, name):
+  def write_file_header(self, has_float_type, has_bfloat16_type, requires_exts):
     #pylint: disable=line-too-long
+    dynamic_llvm_header_prologue = r"""// REQUIRES: riscv-registered-target
+// RUN: %clang_cc1 -triple riscv64 -disable-O0-optnone \
+"""
+
+    dynamic_llvm_header_epilogue = r"""// RUN:   -target-feature +experimental \
+// RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
+// RUN:   FileCheck --check-prefix=CHECK-RV64 %s
+
+"""
+
     int_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v -disable-O0-optnone \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
@@ -514,15 +530,15 @@ class APITestGenerator(Generator):
 """
     float_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v -target-feature +zfh \
-// RUN:   -target-feature +experimental-zvfh -disable-O0-optnone \
+// RUN:   -target-feature +zvfh -disable-O0-optnone \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
 """
     bfloat16_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v \
-// RUN:   -target-feature +experimental-zvfbfmin \
-// RUN:   -target-feature +experimental-zvfbfwma -disable-O0-optnone \
+// RUN:   -target-feature +zvfbfmin \
+// RUN:   -target-feature +zvfbfwma -disable-O0-optnone \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
@@ -534,37 +550,24 @@ class APITestGenerator(Generator):
 
 """)
 
-    vector_crypto_llvm_header = r"""// REQUIRES: riscv-registered-target
-// RUN: %clang_cc1 -triple riscv64 -target-feature +v -target-feature +zvl512b \
-// RUN:   -target-feature +zvbb \
-// RUN:   -target-feature +zvbc \
-// RUN:   -target-feature +zvkg \
-// RUN:   -target-feature +zvkned \
-// RUN:   -target-feature +zvknhb \
-// RUN:   -target-feature +zvksed \
-// RUN:   -target-feature +zvksh -disable-O0-optnone \
-// RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
-// RUN:   FileCheck --check-prefix=CHECK-RV64 %s
-
-"""
-
-    def is_vector_crypto_inst(name):
-      vector_crypto_inst = [
-          "vandn", "vbrev", "vbrev8", "vrev8", "vclz", "vctz", "vrol", "vror",
-          "vwsll", "vclmul", "vclmulh", "vghsh", "vgmul", "vaesef", "vaesem",
-          "vaesdf", "vaesdm", "vaeskf1", "vaeskf2", "vaesz", "vsha2ms",
-          "vsha2ch", "vsha2cl", "vsm4k", "vsm4r", "vsm3me", "vsm3c"
-      ]
-      for inst in vector_crypto_inst:
-        if inst in name:
-          return True
-      return False
+    # Dynamic header is used when the requires_exts is not empty.
+    if requires_exts:
+      dynamic_llvm_header = dynamic_llvm_header_prologue
+      for ext in requires_exts:
+        # Due to requirements of SEW==32 intrinsics will be used
+        # in the LLVM test header, the extension "zvknha"
+        # should be replaced with "zvknhb" for the following
+        # SEW==64 intrinsics.
+        if ext == "zvknha":
+          ext = "zvknhb"
+        dynamic_llvm_header += f"// RUN:   -target-feature +{ext} \\\n"
+      dynamic_llvm_header += dynamic_llvm_header_epilogue
 
     if self.toolchain_type == ToolChainType.LLVM:
-      if has_bfloat16_type:
+      if requires_exts:
+        self.fd.write(dynamic_llvm_header)
+      elif has_bfloat16_type:
         self.fd.write(bfloat16_llvm_header)
-      elif is_vector_crypto_inst(name):
-        self.fd.write(vector_crypto_llvm_header)
       elif has_float_type:
         self.fd.write(float_llvm_header)
       else:
@@ -645,7 +648,8 @@ class APITestGenerator(Generator):
         has_float_type = True
 
     if header:
-      self.write_file_header(has_float_type, has_bfloat16_type, name)
+      self.write_file_header(has_float_type, has_bfloat16_type,
+                             inst_info.get_required_exts())
 
     def output_call_arg(arg_name, type_name):
       if ((name.startswith("vget") or name.startswith("vset")) \
@@ -714,7 +718,8 @@ class APITestGenerator(Generator):
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     self.test_file_names = op_list
     template.render(
         G=self,
@@ -723,7 +728,8 @@ class APITestGenerator(Generator):
         sew_list=sew_list,
         lmul_list=lmul_list,
         decorator_list=decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
 
 class Grouper(Generator):
@@ -778,7 +784,8 @@ class Grouper(Generator):
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     self.op_list = op_list
     self.groups[self.current_group].append(title)
     self.current_sub_group = title
@@ -789,7 +796,8 @@ class Grouper(Generator):
         sew_list=sew_list,
         lmul_list=lmul_list,
         decorator_list=decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
 
 class CompatibleHeaderGenerator(Generator):
@@ -936,7 +944,8 @@ _14, _15, _16, _17, _18, _19, _20, NAME, ...) NAME
                      sew_list,
                      lmul_list,
                      decorator_list,
-                     description=None):
+                     description=None,
+                     required_ext_list=None):
     if self.has_tail_policy and len(decorator_list) == 0:
       return
     super().function_group(
@@ -948,7 +957,8 @@ _14, _15, _16, _17, _18, _19, _20, NAME, ...) NAME
         sew_list,
         lmul_list,
         decorator_list,
-        description=description)
+        description=description,
+        required_ext_list=required_ext_list)
 
   @staticmethod
   def is_policy_func(inst_info):
