@@ -54,6 +54,29 @@ def get_gen_from_vendor(vendor_inst_filepath):
 
   return vendor_module.gen
 
+def get_gen_from_rvv(rvv_inst_filepath):
+  if rvv_inst_filepath is None:
+    return None
+  if not os.path.isfile(rvv_inst_filepath):
+    print("File does not exist in path of --rvv-inst, ignoring the option")
+    return None
+  spec = importlib.util.spec_from_file_location("", rvv_inst_filepath)
+  rvv_module = importlib.util.module_from_spec(spec)
+  rvv_module.__package__ = __package__
+
+  if spec is None or spec.loader is None:
+    print("Cannot load module with spec")
+
+  spec.loader.exec_module(rvv_module)  # pytype: disable=attribute-error
+  if not hasattr(rvv_module, "gen"):
+    print("File does not have a attribute named 'gen'")
+    return None
+  if not inspect.isfunction(rvv_module.gen):
+    print("The attribute in file is not a function")
+    print("Please specify a function that takes a Generator")
+    return None
+  
+  return rvv_module.gen  
 
 def get_generator_from_vendor(vendor_generator_filepath,
                               vendor_generator_class_name):
@@ -76,6 +99,28 @@ def get_generator_from_vendor(vendor_generator_filepath,
           f"'{vendor_generator_class_name}'")
     return None
   return getattr(vendor_module, vendor_generator_class_name)
+
+def get_generator_from_rvv(rvv_generator_filepath,
+                              rvv_generator_class_name):
+  if rvv_generator_filepath is None or\
+     rvv_generator_class_name is None:
+    return None
+  if not os.path.isfile(rvv_generator_filepath):
+    print("File does not exist in path of --rvv-generator-script,",
+          "ignoring the option")
+    return None
+  spec = importlib.util.spec_from_file_location("", rvv_generator_filepath)
+  rvv_module = importlib.util.module_from_spec(spec)
+  rvv_module.__package__ = __package__
+
+  if spec is None or spec.loader is None:
+    print("Cannot load module with spec")
+  spec.loader.exec_module(rvv_module)  # pytype: disable=attribute-error
+  if not hasattr(rvv_module, rvv_generator_class_name):
+    print("File does not have a attribute named",
+          f"'{rvv_generator_class_name}'")
+    return None
+  return getattr(rvv_module, rvv_generator_class_name)
 
 
 def main():
@@ -102,7 +147,10 @@ def main():
   parser.add_argument("--toolchain-type", default=ToolChainType.UNKNOWN)
   parser.add_argument("--has-policy", default=False, action="store_true")
   parser.add_argument("--vendor-inst")
+  parser.add_argument("--rvv-inst")
   parser.add_argument("--skip-default-inst", default=False, action="store_true")
+  parser.add_argument("--rvv-generator-script")
+  parser.add_argument("--rvv-generator-name")
   parser.add_argument("--vendor-generator-script")
   parser.add_argument("--vendor-generator-name")
   parser.add_argument("--gen-vector-crypto", default=False, action="store_true")
@@ -110,12 +158,21 @@ def main():
   args = parser.parse_args()
 
   vendor_gen = get_gen_from_vendor(args.vendor_inst)
+  rvv_gen = get_gen_from_rvv(args.rvv_inst)
   if vendor_gen is not None:
     print("Recognized 'gen' function through --vendor-inst path",
           f"'{args.vendor_inst}'")
+
   vendor_generator =\
     get_generator_from_vendor(args.vendor_generator_script,
                               args.vendor_generator_name)
+  if rvv_gen is not None:
+    print("Recognized 'gen' function through --rvv-inst path",
+          f"'{args.rvv_inst}'")  
+    
+  rvv_generator =\
+    get_generator_from_rvv(args.rvv_generator_script,
+                              args.rvv_generator_name)
   # If a vendor generator is specified, the --gen option will be ignored
   if vendor_generator is not None:
     print("Recognized generator through --vendor-generator-script path",
@@ -129,6 +186,20 @@ def main():
         print("Skipping default RVV instructions (--skip-default-inst)")
       if vendor_gen is not None:
         vendor_gen(g)
+      g.report_summary()
+    return
+  elif rvv_generator is not None:
+    print("Recognized generator through --rvv-generator-script path",
+          f"'{args.rvv_generator_script}'")
+    print(f"Triggering the generator {args.rvv_generator_name}")
+    with open(args.out, "w", encoding="utf-8") as f:
+      g = rvv_generator(f, args.has_policy)
+      if not args.skip_default_inst:
+        inst.gen(g)
+      else:
+        print("Skipping default RVV instructions (--skip-default-inst)")
+      if rvv_gen is not None:
+        rvv_gen(g)
       g.report_summary()
     return
 
