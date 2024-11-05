@@ -1475,6 +1475,61 @@ def first_letter_upper(s):
   return s[0].upper() + s[1:]
 
 
+def get_op_attribute(inst_info, name, **kwargs):
+  inst_attrs = []
+  if CompatibleHeaderGenerator.is_policy_func(inst_info):
+    if inst_info.extra_attr & ExtraAttr.IS_TA:
+      inst_attrs.append("TailAgnostic")
+    if inst_info.extra_attr & ExtraAttr.IS_TU:
+      inst_attrs.append("TailUndisturbed")
+    if inst_info.extra_attr & ExtraAttr.IS_MA:
+      inst_attrs.append("Masked")
+    if inst_info.extra_attr & ExtraAttr.IS_MU:
+      inst_attrs.append("MaskUndisturbed")
+    if inst_info.extra_attr & ExtraAttr.IS_TAMA:
+      inst_attrs.append("TailAgnostic")
+    if inst_info.extra_attr & ExtraAttr.IS_TAMU:
+      inst_attrs.append("MaskUndisturbed")
+    if inst_info.extra_attr & ExtraAttr.IS_TUMA:
+      inst_attrs.append("TailUndisturbed")
+      inst_attrs.append("MaskAgnostic")
+    if inst_info.extra_attr & ExtraAttr.IS_TUMU:
+      inst_attrs.append("TailUndisturbed")
+      inst_attrs.append("MaskUndisturbed")
+    if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+      inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
+      inst_attrs.append("TailUndisturbed")
+      inst_attrs.append("MaskAgnostic")
+    if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+      inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
+      inst_attrs.append("Masked")
+  else:  # non-policy intrinsics go here
+    if inst_info.store_p():
+      if inst_info.extra_attr & ExtraAttr.IS_MASK:
+        inst_attrs.append("Masked")
+      else:
+        inst_attrs.append("")
+    elif inst_info.extra_attr & ExtraAttr.IS_MASK:
+      if CompatibleHeaderGenerator.is_no_mu_inst(name):
+        if CompatibleHeaderGenerator.is_always_ta_inst(name):
+          inst_attrs.append("Masked")
+        else:
+          inst_attrs.append("TailUndisturbed")
+          inst_attrs.append("MaskAgnostic")
+      else:
+        if CompatibleHeaderGenerator.is_always_ta_inst(name):
+          inst_attrs.append("MaskUndisturbed")
+        else:
+          inst_attrs.append("TailUndisturbed")
+          inst_attrs.append("MaskUndisturbed")
+    in_args_map = copy.deepcopy(kwargs)
+    if "vl" in in_args_map:
+      inst_attrs.append("HaveVLParameter")
+    else:
+      inst_attrs.append("NoVLParameter")
+  return inst_attrs
+
+
 class RIFGenerator(Generator):
   """
   Derived generator for generating 'Operator' definitions in RIF.
@@ -1482,6 +1537,7 @@ class RIFGenerator(Generator):
 
   def __init__(self, f, has_tail_policy):
     super().__init__()
+
     self.has_tail_policy = has_tail_policy
     self.fd = f
     # self.out = f
@@ -1496,6 +1552,7 @@ class RIFGenerator(Generator):
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
       return
 
+  def other_para_handle(self, inst_info, name, return_type, **kwargs):
     is_reduc = inst_info.extra_attr & ExtraAttr.REDUCE != 0
     is_load = inst_info.mem_type == MemType.LOAD
     is_store = inst_info.mem_type == MemType.STORE
@@ -1505,8 +1562,6 @@ class RIFGenerator(Generator):
     # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
     #                ScalarInt32)
     in_args_map = copy.deepcopy(kwargs)
-    vl_arg_p = "vl" in in_args_map
-
     # Remove `vl` argument.
     in_args_map.pop("vl", None)
 
@@ -1519,12 +1574,6 @@ class RIFGenerator(Generator):
       in_args_map.pop("base", None)
 
     n_in_args = len(in_args_map.keys())
-
-    inst_attrs = []
-    if vl_arg_p:
-      inst_attrs.append("HaveVLParameter")
-    else:
-      inst_attrs.append("NoVLParameter")
 
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
@@ -1564,53 +1613,10 @@ class RIFGenerator(Generator):
       op_name = inst_info.OP
     else:
       op_name = inst_info.OP[1:]
+
     op_type = f"{first_letter_upper(op_name)}\
 {output_inst_type[1:]}{inst_info.SEW}\
 {rif_return_type.short_type_name + in_args_sig_str}"
-
-    if inst_info.extra_attr & ExtraAttr.IS_MASK:
-      op_type += "_m"
-      inst_attrs.append("MaskedOperation")
-    else:
-      inst_attrs.append("NonmaskedOperation")
-    if ExtraAttr.HAS_FRM or ExtraAttr.HAS_VXRM:
-        inst_attrs.append("RoundingMode")
-
-    if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
-      inst_attrs.append("NeedMaskedOff")
-
-    if inst_info.extra_attr & ExtraAttr.NEED_MERGE:
-      inst_attrs.append("NeedMerge")
-
-    if inst_info.extra_attr & ExtraAttr.MERGE:
-      inst_attrs.append("MergeOperation")
-
-    if inst_info.extra_attr & ExtraAttr.MAC:
-      inst_attrs.append("MulAddOperation")
-
-    if is_reduc:
-      inst_attrs.append("ReductionOperation")
-
-    if return_type == "void":
-      inst_attrs.append("VoidOperation")
-
-    if is_store:
-      inst_attrs.append("StoreOperation")
-
-    if is_load:
-      inst_attrs.append("LoadOperation")
-
-    if inst_info.extra_attr & ExtraAttr.IS_TU:
-      inst_attrs.append("TailUndisturbed")
-    elif inst_info.extra_attr & ExtraAttr.IS_MU:
-      inst_attrs.append("MaskUndisturbed")
-    elif inst_info.extra_attr & (ExtraAttr.IS_TUMA
-                                 | ExtraAttr.IS_RED_TUMA):
-      inst_attrs.append("TailUndisturbed")
-      inst_attrs.append("MaskAgnostic")
-    elif inst_info.extra_attr & ExtraAttr.IS_TUMU:
-      inst_attrs.append("TailUndisturbed")
-      inst_attrs.append("MaskUndisturbed")
 
     patterns = re.compile(r".*_(tu.*|mu)")
     match = patterns.search(name)
@@ -1625,10 +1631,10 @@ class RIFGenerator(Generator):
 
     op_ret_type_class = rif_return_type.to_type_class()
 
-    func_decl = super().func(inst_info, name, return_type, **kwargs)
+    super().func(inst_info, name, return_type, **kwargs)
     # self.fd.write(f"// {func_decl}")
     output = f"CUSTOM_OP_TYPE({op_type}, {op_id}, {inst_info.SEW}, \
-{op_ret_type_class}, {' | '.join(inst_attrs)}, \
+{op_ret_type_class}, {' | '.join(get_op_attribute(name, **kwargs))}, \
 {rif_return_type.rif_type}, {n_in_args}, {in_args_str})"
 
     self.fd.write(output)
