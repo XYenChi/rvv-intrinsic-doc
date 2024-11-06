@@ -23,9 +23,12 @@ import os
 import collections
 import re
 
+from pylint.checkers.utils import get_node_first_ancestor_of_type_and_its_child
+
 from enums import ExtraAttr
 from enums import ToolChainType
 from enums import MemType
+from enums import InstInfo
 
 
 class Generator(ABC):
@@ -1475,61 +1478,6 @@ def first_letter_upper(s):
   return s[0].upper() + s[1:]
 
 
-def get_op_attribute(inst_info, name, **kwargs):
-  inst_attrs = []
-  if CompatibleHeaderGenerator.is_policy_func(inst_info):
-    if inst_info.extra_attr & ExtraAttr.IS_TA:
-      inst_attrs.append("TailAgnostic")
-    if inst_info.extra_attr & ExtraAttr.IS_TU:
-      inst_attrs.append("TailUndisturbed")
-    if inst_info.extra_attr & ExtraAttr.IS_MA:
-      inst_attrs.append("Masked")
-    if inst_info.extra_attr & ExtraAttr.IS_MU:
-      inst_attrs.append("MaskUndisturbed")
-    if inst_info.extra_attr & ExtraAttr.IS_TAMA:
-      inst_attrs.append("TailAgnostic")
-    if inst_info.extra_attr & ExtraAttr.IS_TAMU:
-      inst_attrs.append("MaskUndisturbed")
-    if inst_info.extra_attr & ExtraAttr.IS_TUMA:
-      inst_attrs.append("TailUndisturbed")
-      inst_attrs.append("MaskAgnostic")
-    if inst_info.extra_attr & ExtraAttr.IS_TUMU:
-      inst_attrs.append("TailUndisturbed")
-      inst_attrs.append("MaskUndisturbed")
-    if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-      inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
-      inst_attrs.append("TailUndisturbed")
-      inst_attrs.append("MaskAgnostic")
-    if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-      inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
-      inst_attrs.append("Masked")
-  else:  # non-policy intrinsics go here
-    if inst_info.store_p():
-      if inst_info.extra_attr & ExtraAttr.IS_MASK:
-        inst_attrs.append("Masked")
-      else:
-        inst_attrs.append("")
-    elif inst_info.extra_attr & ExtraAttr.IS_MASK:
-      if CompatibleHeaderGenerator.is_no_mu_inst(name):
-        if CompatibleHeaderGenerator.is_always_ta_inst(name):
-          inst_attrs.append("Masked")
-        else:
-          inst_attrs.append("TailUndisturbed")
-          inst_attrs.append("MaskAgnostic")
-      else:
-        if CompatibleHeaderGenerator.is_always_ta_inst(name):
-          inst_attrs.append("MaskUndisturbed")
-        else:
-          inst_attrs.append("TailUndisturbed")
-          inst_attrs.append("MaskUndisturbed")
-    in_args_map = copy.deepcopy(kwargs)
-    if "vl" in in_args_map:
-      inst_attrs.append("HaveVLParameter")
-    else:
-      inst_attrs.append("NoVLParameter")
-  return inst_attrs
-
-
 class RIFGenerator(Generator):
   """
   Derived generator for generating 'Operator' definitions in RIF.
@@ -1537,7 +1485,6 @@ class RIFGenerator(Generator):
 
   def __init__(self, f, has_tail_policy):
     super().__init__()
-
     self.has_tail_policy = has_tail_policy
     self.fd = f
     # self.out = f
@@ -1548,97 +1495,154 @@ class RIFGenerator(Generator):
     if inst_info.LMUL not in [1, 0]:
       return
 
-    # TODO: Skip any type with tuple type for now.
+      # TODO: Skip any type with tuple type for now.
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
       return
-
-  def other_para_handle(self, inst_info, name, return_type, **kwargs):
-    is_reduc = inst_info.extra_attr & ExtraAttr.REDUCE != 0
-    is_load = inst_info.mem_type == MemType.LOAD
-    is_store = inst_info.mem_type == MemType.STORE
-    is_seg_store = is_store and "v0" in kwargs
-    rif_return_type = RIFType(return_type, is_always_lmul1=is_reduc)
-
-    # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
-    #                ScalarInt32)
-    in_args_map = copy.deepcopy(kwargs)
-    # Remove `vl` argument.
-    in_args_map.pop("vl", None)
-
-    if is_reduc:
-      # Remove `scalar` and `dest` argument for reduction.
-      in_args_map.pop("scalar", None)
-      in_args_map.pop("dest", None)
-
-    if is_store:
-      in_args_map.pop("base", None)
-
-    n_in_args = len(in_args_map.keys())
-
+    rif_return_type = RIFType(return_type, is_always_lmul1=inst_info.extra_attr & ExtraAttr.REDUCE)
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
     output_inst_type = inst_info.inst_type.name.replace("W1",
-                                                        "S").replace("V1", "S")
-
+                                                            "S").replace("V1", "S")
     def rvvtype2riftype(arg):
-      arg_name = arg[0]
-      arg_type = arg[1]
-      is_always_lmul1 = is_reduc and (arg_name in ["dest", "scalar"])
-      is_force_vector = is_load and arg_name == "base"
-      riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
-      return riftype.rif_type
-
+        arg_name = arg[0]
+        arg_type = arg[1]
+        is_always_lmul1 = inst_info.extra_attr & ExtraAttr.REDUCE and (arg_name in ["dest", "scalar"])
+        is_force_vector = inst_info.mem_type == MemType.LOAD and arg_name == "base"
+        riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
+        return riftype.rif_type
+    in_args_map = copy.deepcopy(kwargs)
     in_args = list(map(rvvtype2riftype, in_args_map.items()))
     in_args_str = ", ".join(in_args)
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
     in_args_sig_str = "".join(in_args_sig)
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
-      op_id = f"{inst_info.OP[1:]}"
+        op_id = f"{inst_info.OP[1:]}"
     elif inst_info.mem_type == MemType.STORE:
-      op_id = f"{inst_info.OP}_v"
+        op_id = f"{inst_info.OP}_v"
     elif inst_info.OP.startswith("mv") or inst_info.OP.startswith("fmv"):
-      op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
+        op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
     elif inst_info.OP == "id":
-      op_id = "id_v"
+        op_id = "id_v"
     elif inst_info.extra_attr & ExtraAttr.CONVERT:
-      x = name.split("_")
-      if "rtz" in x or "rod" in x:
-        suffix = "_".join(x[2:5])
-      else:
-        suffix = "_".join(x[1:4])
-      op_id = f"{inst_info.OP[1:]}_{suffix}"
+        x = name.split("_")
+        if "rtz" in x or "rod" in x:
+            suffix = "_".join(x[2:5])
+        else:
+            suffix = "_".join(x[1:4])
+        op_id = f"{inst_info.OP[1:]}_{suffix}"
     else:
-      op_id = f"{inst_info.OP[1:]}_{output_inst_type[1:].lower()}"
-    if is_load or is_store:
-      op_name = inst_info.OP
-    else:
-      op_name = inst_info.OP[1:]
-
-    op_type = f"{first_letter_upper(op_name)}\
-{output_inst_type[1:]}{inst_info.SEW}\
-{rif_return_type.short_type_name + in_args_sig_str}"
-
-    patterns = re.compile(r".*_(tu.*|mu)")
-    match = patterns.search(name)
-    if match:
-      if op_type[-2:] == "_m":
-        op_type = op_type[:-2]
-      op_type = op_type + "_" + match.group(1)
-
-    # TODO: Fix seg store.
-    if is_store and not is_seg_store:
-      rif_return_type = RIFType(in_args_map["vs3"], is_always_lmul1=False)
-
+        op_id = f"{inst_info.OP[1:]}_{output_inst_type[1:].lower()}"
+    op_name = inst_info.OP[1:]
     op_ret_type_class = rif_return_type.to_type_class()
-
-    super().func(inst_info, name, return_type, **kwargs)
-    # self.fd.write(f"// {func_decl}")
-    output = f"CUSTOM_OP_TYPE({op_type}, {op_id}, {inst_info.SEW}, \
-{op_ret_type_class}, {' | '.join(get_op_attribute(name, **kwargs))}, \
-{rif_return_type.rif_type}, {n_in_args}, {in_args_str})"
-
+    n_in_args = len(in_args_map.keys())
+    inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
+    op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+               f"{inst_info.SEW}"
+               f"{rif_return_type.short_type_name + in_args_sig_str}")
+    output = (f"CUSTOM_OP_TYPE({op_type}, "
+              f"{op_id}, "
+              f"{inst_info.SEW}, "
+              f"{op_ret_type_class}, "
+              f"{' | '.join(inst_attrs)},"
+              f"{rif_return_type.rif_type}, "
+              f"{n_in_args}, "
+              f"{in_args_str})")
     self.fd.write(output)
     self.fd.write("\n")
+
+  def write(self, text):
+      self.fd.write(text)
+  def get_tail_policy_attribute(self, name, inst_info, **kwargs):
+      """
+      Gets new suffix for instruction based on name and instruction information.
+      """
+      # policy intrinsics go here
+      inst_attrs = []
+      if CompatibleHeaderGenerator.is_policy_func(inst_info):
+          if inst_info.extra_attr & ExtraAttr.IS_TA:
+              inst_attrs.append("")
+          if inst_info.extra_attr & ExtraAttr.IS_TU:
+              inst_attrs.append("TailUndisturbed")
+          if inst_info.extra_attr & ExtraAttr.IS_MA:
+              inst_attrs.append("MaskAgnostic")
+          if inst_info.extra_attr & ExtraAttr.IS_MU:
+              inst_attrs.append("MaskUndisturbed")
+          if inst_info.extra_attr & ExtraAttr.IS_TAMA:
+              inst_attrs.append("MaskedOperation")
+          if inst_info.extra_attr & ExtraAttr.IS_TAMU:
+              inst_attrs.append("MaskUndisturbed")
+          if inst_info.extra_attr & ExtraAttr.IS_TUMA:
+              inst_attrs.append("TailUndisturbed")
+              inst_attrs.append("MaskAgnostic")
+          if inst_info.extra_attr & ExtraAttr.IS_TUMU:
+              inst_attrs.append("TailUndisturbed")
+              inst_attrs.append("MaskUndisturbed")
+          if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                  inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
+              inst_attrs.append("TailUndisturbed")
+              inst_attrs.append("MaskAgnostic")
+          if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                  inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
+              inst_attrs.append("MaskedOperation")
+      else:  # non-policy intrinsics go here
+          if inst_info.store_p():
+              if inst_info.extra_attr & ExtraAttr.IS_MASK:
+                  inst_attrs.append("MaskedOperation")
+              else:
+                  inst_attrs.append("")
+          elif inst_info.extra_attr & ExtraAttr.IS_MASK:
+              if CompatibleHeaderGenerator.is_no_mu_inst(name):
+                  if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                      inst_attrs.append("MaskedOperation")
+                  else:
+                      inst_attrs.append("TailUndisturbed")
+                      inst_attrs.append("MaskAgnostic")
+              else:
+                  if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                      inst_attrs.append("MaskUndisturbed")
+                  else:
+                      inst_attrs.append("TailUndisturbed")
+                      inst_attrs.append("MaskUndisturbed")
+      if inst_info.extra_attr & ExtraAttr.REDUCE:
+          inst_attrs.append("ReductionOperation")
+      if inst_info.mem_type == MemType.LOAD:
+          inst_attrs.append("LoadOperation")
+      if inst_info.mem_type == MemType.STORE:
+          inst_attrs.append("StoreOperation")
+      if inst_info.mem_type == MemType.STORE and "v0" in kwargs:
+          inst_attrs.append("SegStoreOperation")
+      else:
+          inst_attrs.append("NonmaskedOperation")
+      if inst_info.extra_attr & ExtraAttr.HAS_FRM or inst_info.extra_attr & ExtraAttr.HAS_VXRM:
+          inst_attrs.append("RoundingMode")
+      if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
+          inst_attrs.append("NeedMaskedOff")
+      if inst_info.extra_attr & ExtraAttr.NEED_MERGE:
+          inst_attrs.append("NeedMerge")
+      if inst_info.extra_attr & ExtraAttr.MERGE:
+          inst_attrs.append("MergeOperation")
+      if inst_info.extra_attr & ExtraAttr.MAC:
+          inst_attrs.append("MulAddOperation")
+     # if self.return_type == "void":
+     #      inst_attrs.append("VoidOperation")
+      if "vl" in copy.deepcopy(kwargs):
+          inst_attrs.append("HaveVLParameter")
+      else:
+          inst_attrs.append("NoVLParameter")
+      return inst_attrs
+      # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
+      #                ScalarInt32)
+  def remove_para(self, inst_info, name, **kwargs):
+      in_args_map = copy.deepcopy(kwargs)
+      vl_arg_p = "vl" in in_args_map
+      # Remove `vl` argument.
+      in_args_map.pop("vl", None)
+      if inst_info.extra_attr & ExtraAttr.REDUCE:
+          # Remove `scalar` and `dest` argument for reduction.
+          in_args_map.pop("scalar", None)
+          in_args_map.pop("dest", None)
+      if inst_info.mem_type == MemType.STORE:
+          in_args_map.pop("base", None)
 
   def ignore_zvqmac_section(self):
     return True
