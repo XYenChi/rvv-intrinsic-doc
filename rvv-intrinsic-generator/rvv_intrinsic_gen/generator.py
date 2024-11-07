@@ -25,7 +25,7 @@ import re
 
 from pylint.checkers.utils import get_node_first_ancestor_of_type_and_its_child
 
-from enums import ExtraAttr
+from enums import ExtraAttr, InstType
 from enums import ToolChainType
 from enums import MemType
 from enums import InstInfo
@@ -1501,6 +1501,7 @@ class RIFGenerator(Generator):
     rif_return_type = RIFType(return_type, is_always_lmul1=inst_info.extra_attr & ExtraAttr.REDUCE)
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
+
     output_inst_type = inst_info.inst_type.name.replace("W1",
                                                             "S").replace("V1", "S")
     def rvvtype2riftype(arg):
