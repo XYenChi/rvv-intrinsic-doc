@@ -1518,10 +1518,10 @@ class RIFGenerator(Generator):
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
     elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
-        op_id = f"{inst_info.OP}_v"
-    elif inst_info.OP.startswith("mv") or inst_info.OP.startswith("fmv"):
+        op_id = f"{inst_info.OP[1:]}_v"
+    elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
         op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
-    elif inst_info.OP == "id":
+    elif inst_info.OP == "vid":
         op_id = "id_v"
     elif inst_info.extra_attr & ExtraAttr.CONVERT:
         x = name.split("_")

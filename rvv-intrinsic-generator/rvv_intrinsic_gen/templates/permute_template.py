@@ -63,7 +63,16 @@ def render(G,
       type_helper = TypeHelper(**args)
 
       if op == "mv":
-        if decorator.func_suffix == "":
+        if decorator.func_suffix == "" and data_type == "float":
+          G.func(
+              InstInfo.get(
+                  args, decorator, vs_inst_type,
+                  required_ext=required_ext_list),
+              name="{OP}_{S_TYPE}_s_{TYPE}{SEW}m{LMUL}_{TYPE}{SEW}".format_map(
+                  args),
+              return_type=type_helper.s,
+              vs1=type_helper.v)
+        else:
           G.func(
               InstInfo.get(
                   args, decorator, sv_inst_type,
