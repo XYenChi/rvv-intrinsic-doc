@@ -1517,7 +1517,7 @@ class RIFGenerator(Generator):
     in_args_sig_str = "".join(in_args_sig)
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
-    elif inst_info.mem_type == MemType.STORE:
+    elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
         op_id = f"{inst_info.OP}_v"
     elif inst_info.OP.startswith("mv") or inst_info.OP.startswith("fmv"):
         op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
@@ -1559,8 +1559,6 @@ class RIFGenerator(Generator):
       # policy intrinsics go here
       inst_attrs = []
       if CompatibleHeaderGenerator.is_policy_func(inst_info):
-          if inst_info.extra_attr & ExtraAttr.IS_TA:
-              inst_attrs.append("")
           if inst_info.extra_attr & ExtraAttr.IS_TU:
               inst_attrs.append("TailUndisturbed")
           if inst_info.extra_attr & ExtraAttr.IS_MA:
@@ -1588,8 +1586,6 @@ class RIFGenerator(Generator):
           if inst_info.store_p():
               if inst_info.extra_attr & ExtraAttr.IS_MASK:
                   inst_attrs.append("MaskedOperation")
-              else:
-                  inst_attrs.append("")
           elif inst_info.extra_attr & ExtraAttr.IS_MASK:
               if CompatibleHeaderGenerator.is_no_mu_inst(name):
                   if CompatibleHeaderGenerator.is_always_ta_inst(name):
