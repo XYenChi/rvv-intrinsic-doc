@@ -1511,10 +1511,27 @@ class RIFGenerator(Generator):
         is_force_vector = inst_info.mem_type == MemType.LOAD and arg_name == "base"
         riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
         return riftype.rif_type
+
     in_args_map = copy.deepcopy(kwargs)
+    # Remove `vl` argument.
+    inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
+    if inst_info.extra_attr & ExtraAttr.REDUCE:
+      # Remove `scalar` and `dest` argument for reduction.
+      in_args_map.pop("scalar", None)
+      in_args_map.pop("dest", None)
+    if inst_info.mem_type == MemType.STORE:
+      in_args_map.pop("base", None)
+    print("in_args_map:")
+    print(in_args_map)
     in_args = list(map(rvvtype2riftype, in_args_map.items()))
+    print("inst_info.OP:")
+    print(inst_info.OP)
+    print("in_args:")
+    print(in_args)
     in_args_str = ", ".join(in_args)
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
+    print("in_args_sig:")
+    print(in_args_sig)
     in_args_sig_str = "".join(in_args_sig)
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
@@ -1536,10 +1553,20 @@ class RIFGenerator(Generator):
     op_name = inst_info.OP[1:]
     op_ret_type_class = rif_return_type.to_type_class()
     n_in_args = len(in_args_map.keys())
-    inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
+    if "vl" in copy.deepcopy(kwargs):
+      inst_attrs.append("HaveVLParameter")
+    else:
+      inst_attrs.append("NoVLParameter")
+    in_args_map.pop("vl", None)
     op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
                f"{inst_info.SEW}"
                f"{rif_return_type.short_type_name + in_args_sig_str}")
+    patterns = re.compile(r".*_(tu.*|m.*)")
+    match = patterns.search(name)
+    if match:
+      if op_type[-2:] == "_m":
+        op_type = op_type[:-2]
+      op_type = op_type + "_" + match.group(1)
     output = (f"CUSTOM_OP_TYPE({op_type}, "
               f"{op_id}, "
               f"{inst_info.SEW}, "
@@ -1590,6 +1617,7 @@ class RIFGenerator(Generator):
           elif inst_info.extra_attr & ExtraAttr.IS_MASK:
               if CompatibleHeaderGenerator.is_no_mu_inst(name):
                   if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                      print(name)
                       inst_attrs.append("MaskedOperation")
                   else:
                       inst_attrs.append("TailUndisturbed")
@@ -1608,8 +1636,6 @@ class RIFGenerator(Generator):
           inst_attrs.append("StoreOperation")
       if inst_info.mem_type == MemType.STORE and "v0" in kwargs:
           inst_attrs.append("SegStoreOperation")
-      else:
-          inst_attrs.append("NonmaskedOperation")
       if inst_info.extra_attr & ExtraAttr.HAS_FRM or inst_info.extra_attr & ExtraAttr.HAS_VXRM:
           inst_attrs.append("RoundingMode")
       if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
@@ -1622,24 +1648,8 @@ class RIFGenerator(Generator):
           inst_attrs.append("MulAddOperation")
      # if self.return_type == "void":
      #      inst_attrs.append("VoidOperation")
-      if "vl" in copy.deepcopy(kwargs):
-          inst_attrs.append("HaveVLParameter")
-      else:
-          inst_attrs.append("NoVLParameter")
       return inst_attrs
       # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
       #                ScalarInt32)
-  def remove_para(self, inst_info, name, **kwargs):
-      in_args_map = copy.deepcopy(kwargs)
-      vl_arg_p = "vl" in in_args_map
-      # Remove `vl` argument.
-      in_args_map.pop("vl", None)
-      if inst_info.extra_attr & ExtraAttr.REDUCE:
-          # Remove `scalar` and `dest` argument for reduction.
-          in_args_map.pop("scalar", None)
-          in_args_map.pop("dest", None)
-      if inst_info.mem_type == MemType.STORE:
-          in_args_map.pop("base", None)
-
   def ignore_zvqmac_section(self):
     return True
