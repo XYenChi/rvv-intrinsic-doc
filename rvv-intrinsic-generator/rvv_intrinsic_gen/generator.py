@@ -1513,8 +1513,13 @@ class RIFGenerator(Generator):
         return riftype.rif_type
 
     in_args_map = copy.deepcopy(kwargs)
-    # Remove `vl` argument.
     inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
+    # Remove `vl` argument.
+    if "vl" in copy.deepcopy(kwargs):
+      inst_attrs.append("HaveVLParameter")
+    else:
+      inst_attrs.append("NoVLParameter")
+    in_args_map.pop("vl", None)
     if inst_info.extra_attr & ExtraAttr.REDUCE:
       # Remove `scalar` and `dest` argument for reduction.
       in_args_map.pop("scalar", None)
@@ -1553,14 +1558,10 @@ class RIFGenerator(Generator):
     op_name = inst_info.OP[1:]
     op_ret_type_class = rif_return_type.to_type_class()
     n_in_args = len(in_args_map.keys())
-    if "vl" in copy.deepcopy(kwargs):
-      inst_attrs.append("HaveVLParameter")
-    else:
-      inst_attrs.append("NoVLParameter")
-    in_args_map.pop("vl", None)
     op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
                f"{inst_info.SEW}"
                f"{rif_return_type.short_type_name + in_args_sig_str}")
+    print(name)
     patterns = re.compile(r".*_(tu.*|m.*)")
     match = patterns.search(name)
     if match:
@@ -1611,23 +1612,9 @@ class RIFGenerator(Generator):
                   inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
               inst_attrs.append("MaskedOperation")
       else:  # non-policy intrinsics go here
-          if inst_info.store_p():
-              if inst_info.extra_attr & ExtraAttr.IS_MASK:
-                  inst_attrs.append("MaskedOperation")
-          elif inst_info.extra_attr & ExtraAttr.IS_MASK:
-              if CompatibleHeaderGenerator.is_no_mu_inst(name):
-                  if CompatibleHeaderGenerator.is_always_ta_inst(name):
-                      print(name)
-                      inst_attrs.append("MaskedOperation")
-                  else:
-                      inst_attrs.append("TailUndisturbed")
-                      inst_attrs.append("MaskAgnostic")
-              else:
-                  if CompatibleHeaderGenerator.is_always_ta_inst(name):
-                      inst_attrs.append("MaskUndisturbed")
-                  else:
-                      inst_attrs.append("TailUndisturbed")
-                      inst_attrs.append("MaskUndisturbed")
+          if inst_info.extra_attr & ExtraAttr.IS_MASK:
+              inst_attrs.append("MaskedOperation")
+
       if inst_info.extra_attr & ExtraAttr.REDUCE:
           inst_attrs.append("ReductionOperation")
       if inst_info.mem_type == MemType.LOAD:
