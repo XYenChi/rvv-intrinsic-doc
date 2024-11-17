@@ -1419,8 +1419,10 @@ def parse_rif_scalar_type(typename):
   if "double" in typename:
     return ("ScalarFloat64", "SFloat64", "SF64")
 
-  if typename in ["size_t", "unsigned long", "unsigned int"]:
+  if typename in ["size_t", "unsigned long"]:
     return ("ScalarUIntXLen", "SUIntXLen", "SL")
+  if typename in ["unsigned int"]:
+    return ("ScalarUIntStatus", "SUIntStatus", "SS")
   if typename in ["long", "ptrdiff_t", "const int", "int"]:
     return ("ScalarIntXLen", "SIntXLen", "SI")
   if typename == "void":
@@ -1498,7 +1500,7 @@ class RIFGenerator(Generator):
       # TODO: Skip any type with tuple type for now.
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
       return
-    rif_return_type = RIFType(return_type, is_always_lmul1=inst_info.extra_attr & ExtraAttr.REDUCE)
+    rif_return_type = RIFType(return_type)
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
 
