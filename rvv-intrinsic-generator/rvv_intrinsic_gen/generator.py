@@ -1613,9 +1613,13 @@ class RIFGenerator(Generator):
           if inst_info.extra_attr & ExtraAttr.IS_MASK and \
                   inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
               inst_attrs.append("MaskedOperation")
+          else:
+            inst_attrs.append("NonmaskedOperation")
       else:  # non-policy intrinsics go here
           if inst_info.extra_attr & ExtraAttr.IS_MASK:
               inst_attrs.append("MaskedOperation")
+          else:
+              inst_attrs.append("NonmaskedOperation")
 
       if inst_info.extra_attr & ExtraAttr.REDUCE:
           inst_attrs.append("ReductionOperation")
