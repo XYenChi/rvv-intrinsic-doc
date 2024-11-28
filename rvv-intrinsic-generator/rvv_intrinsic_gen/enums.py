@@ -71,6 +71,10 @@ class InstType(enum.Enum):
 
   V1VV1 = 81
   W1VW1 = 82
+  XS = 83
+  SX = 84
+  FS = 85
+  SF = 86
 
   SETVL = 100
   SETVLMAX = 101
