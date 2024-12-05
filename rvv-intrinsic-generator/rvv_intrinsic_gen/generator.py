@@ -1517,7 +1517,7 @@ class RIFGenerator(Generator):
     in_args_map = copy.deepcopy(kwargs)
     inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
     # Remove `vl` argument.
-    if "vl" in copy.deepcopy(kwargs):
+    if "vl" in copy.deepcopy(kwargs) or len(in_args_map) == 0:
       inst_attrs.append("HaveVLParameter")
     else:
       inst_attrs.append("NoVLParameter")
@@ -1528,24 +1528,24 @@ class RIFGenerator(Generator):
       in_args_map.pop("dest", None)
     if inst_info.mem_type == MemType.STORE:
       in_args_map.pop("base", None)
-    print("in_args_map:")
-    print(in_args_map)
     in_args = list(map(rvvtype2riftype, in_args_map.items()))
-    print("inst_info.OP:")
-    print(inst_info.OP)
-    print("in_args:")
-    print(in_args)
     in_args_str = ", ".join(in_args)
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
-    print("in_args_sig:")
-    print(in_args_sig)
     in_args_sig_str = "".join(in_args_sig)
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
     elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
         op_id = f"{inst_info.OP[1:]}_v"
     elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
+        print("inst_info.inst_type.name:")
+        print(inst_info.inst_type.name)
+        print("inst_info.OP:")
+        print(inst_info.OP)
         op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
+        print("op_id")
+        print(op_id)
+        # if inst_attrs in ["NoVLParameter"]:
+        #   op_id
     elif inst_info.OP == "vid":
         op_id = "id_v"
     elif inst_info.extra_attr & ExtraAttr.CONVERT:
@@ -1563,7 +1563,6 @@ class RIFGenerator(Generator):
     op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
                f"{inst_info.SEW}"
                f"{rif_return_type.short_type_name + in_args_sig_str}")
-    print(name)
     patterns = re.compile(r".*_(tu.*|m.*)")
     match = patterns.search(name)
     if match:
@@ -1629,8 +1628,10 @@ class RIFGenerator(Generator):
           inst_attrs.append("StoreOperation")
       if inst_info.mem_type == MemType.STORE and "v0" in kwargs:
           inst_attrs.append("SegStoreOperation")
-      if inst_info.extra_attr & ExtraAttr.HAS_FRM or inst_info.extra_attr & ExtraAttr.HAS_VXRM:
-          inst_attrs.append("RoundingMode")
+      if inst_info.extra_attr & ExtraAttr.HAS_FRM:
+          inst_attrs.append("FRM")
+      if inst_info.extra_attr & ExtraAttr.HAS_VXRM:
+          inst_attrs.append("VXRM")
       if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
           inst_attrs.append("NeedMaskedOff")
       if inst_info.extra_attr & ExtraAttr.NEED_MERGE:
