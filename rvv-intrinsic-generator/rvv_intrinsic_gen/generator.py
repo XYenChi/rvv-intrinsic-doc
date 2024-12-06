@@ -1510,7 +1510,7 @@ class RIFGenerator(Generator):
         arg_name = arg[0]
         arg_type = arg[1]
         is_always_lmul1 = inst_info.extra_attr & ExtraAttr.REDUCE and (arg_name in ["dest", "scalar"])
-        is_force_vector = inst_info.mem_type == MemType.LOAD and arg_name == "base"
+        is_force_vector = inst_info.mem_type == MemType.LOAD
         riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
         return riftype.rif_type
 
