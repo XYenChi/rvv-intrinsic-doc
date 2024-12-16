@@ -1376,7 +1376,7 @@ def is_tuple_type(typename):
 
 def parse_rif_vector_type(typename, is_always_lmul1):
   vtype = re.compile(
-      r"v(int|uint|float|bfloat)(8|16|32|64)m(f8|f4|f2|1|2|4|8)_t")
+      r"v(int|uint|float|bfloat)(8|16|32|64)m(f8|f4|f2|1|2|4|8)x?[2-8]?_t")
   match = vtype.search(typename)
   if match:
     # LMUL information is not needed here, it is configurable in RIF.
@@ -1498,12 +1498,11 @@ class RIFGenerator(Generator):
       return
 
       # TODO: Skip any type with tuple type for now.
-    if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      return
+    # if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+    #   return
     rif_return_type = RIFType(return_type)
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
-
     output_inst_type = inst_info.inst_type.name.replace("W1",
                                                             "S").replace("V1", "S")
     def rvvtype2riftype(arg):
@@ -1513,6 +1512,15 @@ class RIFGenerator(Generator):
         is_force_vector = inst_info.mem_type == MemType.LOAD
         riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
         return riftype.rif_type
+    def rvvtuple2riftype(arg):
+        arg_type = arg[1]
+        pattern = re.compile(r".*x(\d+)_t")
+        match = pattern.search(arg_type)
+        if pattern.match(arg_type):
+          nfield = int(match.group(1))
+        else:
+          nfield = 1
+        return nfield
 
     in_args_map = copy.deepcopy(kwargs)
     inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
@@ -1532,6 +1540,10 @@ class RIFGenerator(Generator):
     in_args_str = ", ".join(in_args)
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
     in_args_sig_str = "".join(in_args_sig)
+    if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+      nfields = list(map(rvvtuple2riftype, in_args_map.items()))
+    else:
+      nfields = [1]
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
     elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
@@ -1576,7 +1588,8 @@ class RIFGenerator(Generator):
               f"{' | '.join(inst_attrs)},"
               f"{rif_return_type.rif_type}, "
               f"{n_in_args}, "
-              f"{in_args_str})")
+              f"{in_args_str},"
+              f"{nfields})")
     self.fd.write(output)
     self.fd.write("\n")
 
@@ -1640,8 +1653,8 @@ class RIFGenerator(Generator):
           inst_attrs.append("MergeOperation")
       if inst_info.extra_attr & ExtraAttr.MAC:
           inst_attrs.append("MulAddOperation")
-     # if self.return_type == "void":
-     #      inst_attrs.append("VoidOperation")
+      # if self.return_type == "VOID":
+      #     inst_attrs.append("VoidOperation")
       return inst_attrs
       # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
       #                ScalarInt32)
