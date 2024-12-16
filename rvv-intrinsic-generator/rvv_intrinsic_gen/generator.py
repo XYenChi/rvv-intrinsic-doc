@@ -1541,9 +1541,11 @@ class RIFGenerator(Generator):
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
     in_args_sig_str = "".join(in_args_sig)
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      nfields = list(map(rvvtuple2riftype, in_args_map.items()))
+      input_nfields = list(map(rvvtuple2riftype, in_args_map.items()))
+      output_nfield = rvvtuple2riftype(return_type)
     else:
-      nfields = [1]
+      output_nfield = [1]
+      input_nfields = [1]
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
         op_id = f"{inst_info.OP[1:]}"
     elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
@@ -1589,7 +1591,8 @@ class RIFGenerator(Generator):
               f"{rif_return_type.rif_type}, "
               f"{n_in_args}, "
               f"{in_args_str},"
-              f"{nfields})")
+              f"{output_nfield},"
+              f"{input_nfields})")
     self.fd.write(output)
     self.fd.write("\n")
 
