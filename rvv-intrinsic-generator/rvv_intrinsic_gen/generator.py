@@ -1503,6 +1503,7 @@ class RIFGenerator(Generator):
     rif_return_type = RIFType(return_type)
     # Reduction operation using W1/V1 to represnt an type always LMUL=1,
     # and we translate to S here.
+
     output_inst_type = inst_info.inst_type.name.replace("W1",
                                                             "S").replace("V1", "S")
     def rvvtype2riftype(arg):
@@ -1515,9 +1516,9 @@ class RIFGenerator(Generator):
     def rvvtuple2riftype(arg):
         arg_type = arg[1]
         pattern = re.compile(r".*x(\d+)_t")
-        match = pattern.search(arg_type)
+        match_tuple = pattern.search(arg_type)
         if pattern.match(arg_type):
-          nfield = int(match.group(1))
+          nfield = int(match_tuple.group(1))
         else:
           nfield = 1
         return nfield
@@ -1540,14 +1541,26 @@ class RIFGenerator(Generator):
     in_args_str = ", ".join(in_args)
     in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
     in_args_sig_str = "".join(in_args_sig)
+    if (inst_info.inst_type == InstType.REINT or inst_info.inst_type == InstType.VUNDEF or
+            inst_info.inst_type == InstType.LMUL_EXT or inst_info.inst_type == InstType.LMUL_TRUNC or
+            inst_info.inst_type == InstType.VGET or inst_info.inst_type == InstType.VSET or
+            inst_info.inst_type == InstType.VCREATE or inst_info.inst_type == InstType.SETVL or
+            inst_info.inst_type == InstType.SETVLMAX):
+      inst_attrs.append("Miscellaneous")
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
       input_nfields = list(map(rvvtuple2riftype, in_args_map.items()))
       output_nfield = rvvtuple2riftype(return_type)
     else:
-      output_nfield = [1]
-      input_nfields = [1]
-    if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
+      output_nfield = None
+      input_nfields = None
+    if inst_info.extra_attr & ExtraAttr.INT_EXTENSION :
         op_id = f"{inst_info.OP[1:]}"
+    elif "Miscellaneous" in inst_attrs:
+        op_id = f"{inst_info.OP}"
+    elif inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+        op_id = f"{inst_info.OP}"
+    elif inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+        op_id = f"{inst_info.OP}"
     elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
         op_id = f"{inst_info.OP[1:]}_v"
     elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
@@ -1574,27 +1587,42 @@ class RIFGenerator(Generator):
     op_name = inst_info.OP[1:]
     op_ret_type_class = rif_return_type.to_type_class()
     n_in_args = len(in_args_map.keys())
-    op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
-               f"{inst_info.SEW}"
-               f"{rif_return_type.short_type_name + in_args_sig_str}")
+    if input_nfields is not None:
+      input_nf = "".join(map(str, input_nfields))
+      op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+                 f"{inst_info.SEW}"
+                 f"{rif_return_type.short_type_name + in_args_sig_str}"
+                 f"{output_nfield}"
+                 f"{input_nf}")
+    else:
+      op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+                 f"{inst_info.SEW}"
+                 f"{rif_return_type.short_type_name + in_args_sig_str}")
     patterns = re.compile(r".*_(tu.*|m.*)")
     match = patterns.search(name)
+    if inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+      inst_attrs.append("SegStoreOperation")
+    if inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+      inst_attrs.append("SegLoadOperation")
     if match:
       if op_type[-2:] == "_m":
         op_type = op_type[:-2]
       op_type = op_type + "_" + match.group(1)
-    output = (f"CUSTOM_OP_TYPE({op_type}, "
-              f"{op_id}, "
-              f"{inst_info.SEW}, "
-              f"{op_ret_type_class}, "
-              f"{' | '.join(inst_attrs)},"
-              f"{rif_return_type.rif_type}, "
-              f"{n_in_args}, "
-              f"{in_args_str},"
-              f"{output_nfield},"
-              f"{input_nfields})")
-    self.fd.write(output)
-    self.fd.write("\n")
+    # todo: vlm vsm
+    if op_id != "lm_" and op_id != "sm_" and op_id != "compress_vv" and op_id != "cpop_m" and n_in_args != 0\
+            and op_id != "first_m" and op_id != "mv_x_v":
+      output = (f"CUSTOM_OP_TYPE({op_type}, "
+                f"{op_id}, "
+                f"{inst_info.SEW}, "
+                f"{op_ret_type_class}, "
+                f"{' | '.join(inst_attrs)},"
+                f"{rif_return_type.rif_type}, "
+                f"{n_in_args}, "
+                f"{in_args_str},"
+                f"{output_nfield},"
+                f"{input_nfields})")
+      self.fd.write(output)
+      self.fd.write("\n")
 
   def write(self, text):
       self.fd.write(text)
@@ -1642,8 +1670,6 @@ class RIFGenerator(Generator):
           inst_attrs.append("LoadOperation")
       if inst_info.mem_type == MemType.STORE:
           inst_attrs.append("StoreOperation")
-      if inst_info.mem_type == MemType.STORE and "v0" in kwargs:
-          inst_attrs.append("SegStoreOperation")
       if inst_info.extra_attr & ExtraAttr.HAS_FRM:
           inst_attrs.append("FRM")
       if inst_info.extra_attr & ExtraAttr.HAS_VXRM:
