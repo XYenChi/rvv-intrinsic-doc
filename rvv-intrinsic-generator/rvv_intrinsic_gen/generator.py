@@ -1514,7 +1514,10 @@ class RIFGenerator(Generator):
         riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
         return riftype.rif_type
     def rvvtuple2riftype(arg):
-        arg_type = arg[1]
+        if type(arg) == tuple:
+          arg_type = arg[1]
+        else:
+          arg_type = arg
         pattern = re.compile(r".*x(\d+)_t")
         match_tuple = pattern.search(arg_type)
         if pattern.match(arg_type):
@@ -1618,9 +1621,9 @@ class RIFGenerator(Generator):
                 f"{' | '.join(inst_attrs)},"
                 f"{rif_return_type.rif_type}, "
                 f"{n_in_args}, "
-                f"{in_args_str},"
-                f"{output_nfield},"
-                f"{input_nfields})")
+                f"{input_nfields}, "
+                f"{output_nfield}, "
+                f"{in_args_str},)" )
       self.fd.write(output)
       self.fd.write("\n")
 
