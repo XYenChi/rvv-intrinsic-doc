@@ -29,6 +29,7 @@ import collections
 from enums import InstInfo
 from enums import InstType
 from enums import MemType
+from enums import ExtraAttr
 from generator import CompatibleHeaderGenerator
 
 
@@ -47,6 +48,7 @@ def render(G,
   nf_list = range(2, 9)
   for decorator in decorator_list:
     decorator.write_text_header(G)
+    G.write("// vector loads and stores segment intrinsic\n")
     for args in prod(
         constraint=seg_constraint,
         OP=op_list,
@@ -68,7 +70,7 @@ def render(G,
 
       extra_addr_args = collections.OrderedDict()
       inst_type = InstType.VX
-
+      extra_attr = ExtraAttr.NO_ATTR
       if op in ["vlsseg"]:
         extra_addr_args["rs2"] = "ptrdiff_t"
         inst_type = InstType.VXX
@@ -81,6 +83,7 @@ def render(G,
         args["OP"] = op + nf + "ei" + str(eew)
         inst_type = InstType.VV
       elif op == "vlsegff":
+        extra_attr |= ExtraAttr.FIRST_FAULT
         args["OP"] = "vlseg" + nf + "e" + str(eew) + "ff"
         extra_addr_args["new_vl"] = "size_t *"
       else:
