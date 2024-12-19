@@ -1551,7 +1551,8 @@ class RIFGenerator(Generator):
             inst_info.inst_type == InstType.SETVLMAX):
       inst_attrs.append("Miscellaneous")
     if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      input_nfields = list(map(rvvtuple2riftype, in_args_map.items()))
+      input_nfields_list = list(map(rvvtuple2riftype, in_args_map.items()))
+      input_nfields = "| ".join(map(str, input_nfields_list))
       output_nfield = rvvtuple2riftype(return_type)
     else:
       output_nfield = None
@@ -1591,12 +1592,13 @@ class RIFGenerator(Generator):
     op_ret_type_class = rif_return_type.to_type_class()
     n_in_args = len(in_args_map.keys())
     if input_nfields is not None:
-      input_nf = "".join(map(str, input_nfields))
+      input_nf_suffix = "".join(map(str, list(map(rvvtuple2riftype, in_args_map.items()))))
       op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
                  f"{inst_info.SEW}"
                  f"{rif_return_type.short_type_name + in_args_sig_str}"
+                 f"{input_nf_suffix}"
                  f"{output_nfield}"
-                 f"{input_nf}")
+                 )
     else:
       op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
                  f"{inst_info.SEW}"
