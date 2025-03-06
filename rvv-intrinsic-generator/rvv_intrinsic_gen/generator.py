@@ -1555,8 +1555,8 @@ class RIFGenerator(Generator):
       input_nfields = "| ".join(map(str, input_nfields_list))
       output_nfield = rvvtuple2riftype(return_type)
     else:
-      output_nfield = None
-      input_nfields = None
+      output_nfield = 1
+      input_nfields = 1
     if inst_info.extra_attr & ExtraAttr.INT_EXTENSION :
         op_id = f"{inst_info.OP[1:]}"
     elif "Miscellaneous" in inst_attrs:
