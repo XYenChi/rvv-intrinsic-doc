@@ -32,519 +32,519 @@ from enums import InstInfo
 
 
 class Generator(ABC):
-  """
+    """
   Base class for all generators.
   """
-  has_tail_policy = False
+    has_tail_policy = False
 
-  def __init__(self):
-    self.generated_functions_set = set()
-    pass
+    def __init__(self):
+        self.generated_functions_set = set()
+        pass
 
-  def write(self, text):
-    return "write"
-    raise NotImplementedError
+    def write(self, text):
+        return "write"
+        raise NotImplementedError
 
-  def write_title(self, text, link):
-    raise NotImplementedError
+    def write_title(self, text, link):
+        raise NotImplementedError
 
-  def gen_prologue(self):
-    pass
+    def gen_prologue(self):
+        pass
 
-  def inst_group_prologue(self):
-    return "inst_group_prologue"
-    raise NotImplementedError
+    def inst_group_prologue(self):
+        return "inst_group_prologue"
+        raise NotImplementedError
 
-  def inst_group_epilogue(self):
-    return "inst_group_epilogue"
-    raise NotImplementedError
+    def inst_group_epilogue(self):
+        return "inst_group_epilogue"
+        raise NotImplementedError
 
-  @abstractmethod
-  def func(self, inst_info, name, return_type, **kwargs):
-    return NotImplemented
+    @abstractmethod
+    def func(self, inst_info, name, return_type, **kwargs):
+        return NotImplemented
 
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    # pylint: disable=unused-argument
-    # NOTE: 'title' and 'link' are only used in DocGenerator and
-    # OverloadedDocGenerator. Probably need some decoupling here.
-    template.render(
-        G=self,
-        op_list=op_list,
-        type_list=type_list,
-        sew_list=sew_list,
-        lmul_list=lmul_list,
-        decorator_list=decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        # pylint: disable=unused-argument
+        # NOTE: 'title' and 'link' are only used in DocGenerator and
+        # OverloadedDocGenerator. Probably need some decoupling here.
+        template.render(
+            G=self,
+            op_list=op_list,
+            type_list=type_list,
+            sew_list=sew_list,
+            lmul_list=lmul_list,
+            decorator_list=decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
 
-  def start_group(self, group_name):
-    return "start group"
-    raise NotImplementedError
+    def start_group(self, group_name):
+        return "start group"
+        raise NotImplementedError
 
-  @staticmethod
-  def func_name(name):
-    name = name.replace("_uint", "_u")
-    name = name.replace("_int", "_i")
-    name = name.replace("_float", "_f")
-    name = name.replace("_bool", "_b")
-    name = name.replace("_bfloat", "_bf")
-    # Follows the naming guideline under riscv-c-api-doc to add the `__riscv_`
-    # suffix for all RVV intrinsics.
-    name = "__riscv_" + name
-    return name
+    @staticmethod
+    def func_name(name):
+        name = name.replace("_uint", "_u")
+        name = name.replace("_int", "_i")
+        name = name.replace("_float", "_f")
+        name = name.replace("_bool", "_b")
+        name = name.replace("_bfloat", "_bf")
+        # Follows the naming guideline under riscv-c-api-doc to add the `__riscv_`
+        # suffix for all RVV intrinsics.
+        name = "__riscv_" + name
+        return name
 
-  # Some instructions don't have an overloaded version intrinsics because the
-  # reduced representation of the intrinsics is not expressible. Take vle8 as
-  # an example. Both intrinsics below share the same type of parameters, hence
-  # the LMUL is not derivable through the function parameters and has to be
-  # specified.
-  # vle8_v_i8m1 (const int8_t *base, size_t vl);
-  # vle8_v_i8m2 (const int8_t *base, size_t vl);
-  @staticmethod
-  def is_support_overloaded(name, **kwargs):
-    for p in ["tu", "tamu", "tumu", "tuma", "tam", "tum", "mu"]:
-      if name.split("_")[-1] == p:
+    # Some instructions don't have an overloaded version intrinsics because the
+    # reduced representation of the intrinsics is not expressible. Take vle8 as
+    # an example. Both intrinsics below share the same type of parameters, hence
+    # the LMUL is not derivable through the function parameters and has to be
+    # specified.
+    # vle8_v_i8m1 (const int8_t *base, size_t vl);
+    # vle8_v_i8m2 (const int8_t *base, size_t vl);
+    @staticmethod
+    def is_support_overloaded(name, **kwargs):
+        for p in ["tu", "tamu", "tumu", "tuma", "tam", "tum", "mu"]:
+            if name.split("_")[-1] == p:
+                return True
+        if name.find("vmv_s") != -1 or name.find("vfmv_s") != -1:
+            # Prototype for non-policy and ta intrinsics of vmv_s_x and vfmv_s_f
+            # is not feasible for overloading.
+            return name.split("_")[-1] == "tu"
+        # vle/vse does not support overloading
+        load_ops = [
+            "vl(s)?ei?[0-9]+(ff)?_v_.*", "vl(s)?seg[0-9]ei?[0-9]+(ff)?_v_.*"
+        ]
+        for p in load_ops:
+            if re.match(p, name) and name[-2:] != "_m":
+                return False
+        unsupported_op = [
+            "setvl", "vundefined", "viota", "vmclr", "vmset", "vid", "vmv_v_x",
+            "vfmv_v_f", "vcreate", "vlm_v"
+        ]
+        if any(i in name for i in unsupported_op):
+            return False
+
+        if name.startswith("sf_vc"):
+            any_vector_type = False
+            for arg_type in kwargs.values():
+                if arg_type.startswith("v"):
+                    any_vector_type = True
+
+            if not any_vector_type:
+                return False
+
         return True
-    if name.find("vmv_s") != -1 or name.find("vfmv_s") != -1:
-      # Prototype for non-policy and ta intrinsics of vmv_s_x and vfmv_s_f
-      # is not feasible for overloading.
-      return name.split("_")[-1] == "tu"
-    # vle/vse does not support overloading
-    load_ops = [
-        "vl(s)?ei?[0-9]+(ff)?_v_.*", "vl(s)?seg[0-9]ei?[0-9]+(ff)?_v_.*"
-    ]
-    for p in load_ops:
-      if re.match(p, name) and name[-2:] != "_m":
-        return False
-    unsupported_op = [
-        "setvl", "vundefined", "viota", "vmclr", "vmset", "vid", "vmv_v_x",
-        "vfmv_v_f", "vcreate", "vlm_v"
-    ]
-    if any(i in name for i in unsupported_op):
-      return False
 
-    if name.startswith("sf_vc"):
-      any_vector_type = False
-      for arg_type in kwargs.values():
-        if arg_type.startswith("v"):
-          any_vector_type = True
+    # The counts of some instructions that generated by call it's intrinsic is not
+    # equal to the counts of the intrinsics that are called in test case file.
+    # This is caused by compiler optimizations. So, we compiled a table that lists
+    # the mapping between the instruction and count.
+    # ________________________________
+    # |  Instructions  |    Count    |
+    # ________________________________
+    # |      vle8      |     62      |
+    # ________________________________
+    # |      vle16     |     52      |
+    # ________________________________
+    # |      vle32     |     63      |
+    # ________________________________
+    # |  vreinterpret  |     260     |
+    # ________________________________
+    # |      vget      |     187     |
+    # ________________________________
+    # |      vset      |     66      |
+    # ________________________________
+    # |    vcreate    |     506      |
+    # ________________________________
+    # |      vmv      |     218      |
+    # ________________________________
+    @staticmethod
+    def adjust_api_count_for_vle(api_count, test_file, has_policy, is_overloaded):
+        if test_file == "vle8.c":
+            api_count = 62 if has_policy else api_count
+        if test_file == "vle16.c":
+            api_count = 78 if has_policy else api_count
+        if test_file == "vle32.c":
+            api_count = 63 if has_policy else api_count
+        if test_file == "vreinterpret.c":
+            api_count = 260
+        if test_file == "vget.c":
+            api_count = 187
+        if test_file == "vset.c":
+            api_count = 66
+        if test_file == "vcreate.c":
+            api_count = 506
+        if test_file == "vundefined.c":
+            api_count = 619
+        if test_file == "vmv.c":
+            api_count = 218
+            if is_overloaded and not has_policy:
+                api_count = 130
+            if has_policy:
+                api_count = 201
+        return api_count
 
-      if not any_vector_type:
-        return False
+    @staticmethod
+    def adjust_gnu_pattern_str(opcode):
+        # TODO: move to switch case if python version >= 3.10
+        if opcode in ["vlmul_ext_v", "vlmul_trunc_v", \
+                      "vreinterpret", "vundefined"]:
+            pattern_str = "vs[1248e][r123468]+"
+        elif opcode == "vmv":
+            pattern_str = "v[ml][s]*[ve][0-9]*"
+        elif opcode == "vwadd":
+            pattern_str = "v[w]?add"
+        elif opcode == "vwaddu":
+            pattern_str = "v[w]?add[u]?"
+        elif opcode == "vwsub":
+            pattern_str = "v[w]?sub"
+        elif opcode == "vwsubu":
+            pattern_str = "v[w]?sub[u]?"
+        elif opcode in ["vnmsac", "vnmsub"]:
+            pattern_str = "vnms[acub]+"
+        elif opcode in ["vmadd", "vmacc"]:
+            pattern_str = "vma[c-d][c-d]"
+        elif opcode in ["vmsge", "vmslt"]:
+            pattern_str = "vms[gl][et]"
+        elif opcode in ["vmsgeu", "vmsltu"]:
+            pattern_str = "vms[gl][et]u"
+        elif opcode in ["vget", "vcreate"]:
+            pattern_str = r"vl[124]re[0-9]*\.v\s+v[124],0\([a-z0-9]*\)\s+vs[124]r\.+"
+        elif opcode == "vset":
+            pattern_str = r"vl[1248]re[0-9]*\.v\s+v[1248],0\([a-z0-9]*\)\s+" \
+                          r"vl[1248]re[0-9]*\.v\s+v[1248],0\([a-z0-9]*\)+"
+        else:
+            pattern_str = opcode
 
-    return True
+        pattern_str = pattern_str.replace("_", r"\.")
 
-  # The counts of some instructions that generated by call it's intrinsic is not
-  # equal to the counts of the intrinsics that are called in test case file.
-  # This is caused by compiler optimizations. So, we compiled a table that lists
-  # the mapping between the instruction and count.
-  # ________________________________
-  # |  Instructions  |    Count    |
-  # ________________________________
-  # |      vle8      |     62      |
-  # ________________________________
-  # |      vle16     |     52      |
-  # ________________________________
-  # |      vle32     |     63      |
-  # ________________________________
-  # |  vreinterpret  |     260     |
-  # ________________________________
-  # |      vget      |     187     |
-  # ________________________________
-  # |      vset      |     66      |
-  # ________________________________
-  # |    vcreate    |     506      |
-  # ________________________________
-  # |      vmv      |     218      |
-  # ________________________________
-  @staticmethod
-  def adjust_api_count_for_vle(api_count, test_file, has_policy, is_overloaded):
-    if test_file == "vle8.c":
-      api_count = 62 if has_policy else api_count
-    if test_file == "vle16.c":
-      api_count = 78 if has_policy else api_count
-    if test_file == "vle32.c":
-      api_count = 63 if has_policy else api_count
-    if test_file == "vreinterpret.c":
-      api_count = 260
-    if test_file == "vget.c":
-      api_count = 187
-    if test_file == "vset.c":
-      api_count = 66
-    if test_file == "vcreate.c":
-      api_count = 506
-    if test_file == "vundefined.c":
-      api_count = 619
-    if test_file == "vmv.c":
-      api_count = 218
-      if is_overloaded and not has_policy:
-        api_count = 130
-      if has_policy:
-        api_count = 201
-    return api_count
+        if r"\." not in pattern_str:
+            pattern_str = rf"{pattern_str}\.[ivxfswum.]+"
+        else:
+            pattern_str = rf"{pattern_str}[ivxfswum.]*"
 
-  @staticmethod
-  def adjust_gnu_pattern_str(opcode):
-    # TODO: move to switch case if python version >= 3.10
-    if opcode in ["vlmul_ext_v", "vlmul_trunc_v", \
-                  "vreinterpret", "vundefined"]:
-      pattern_str = "vs[1248e][r123468]+"
-    elif opcode == "vmv":
-      pattern_str = "v[ml][s]*[ve][0-9]*"
-    elif opcode == "vwadd":
-      pattern_str = "v[w]?add"
-    elif opcode == "vwaddu":
-      pattern_str = "v[w]?add[u]?"
-    elif opcode == "vwsub":
-      pattern_str = "v[w]?sub"
-    elif opcode == "vwsubu":
-      pattern_str = "v[w]?sub[u]?"
-    elif opcode in ["vnmsac", "vnmsub"]:
-      pattern_str = "vnms[acub]+"
-    elif opcode in ["vmadd", "vmacc"]:
-      pattern_str = "vma[c-d][c-d]"
-    elif opcode in ["vmsge", "vmslt"]:
-      pattern_str = "vms[gl][et]"
-    elif opcode in ["vmsgeu", "vmsltu"]:
-      pattern_str = "vms[gl][et]u"
-    elif opcode in ["vget", "vcreate"]:
-      pattern_str = r"vl[124]re[0-9]*\.v\s+v[124],0\([a-z0-9]*\)\s+vs[124]r\.+"
-    elif opcode == "vset":
-      pattern_str = r"vl[1248]re[0-9]*\.v\s+v[1248],0\([a-z0-9]*\)\s+" \
-      r"vl[1248]re[0-9]*\.v\s+v[1248],0\([a-z0-9]*\)+"
-    else:
-      pattern_str = opcode
+        return pattern_str
 
-    pattern_str = pattern_str.replace("_", r"\.")
+    @staticmethod
+    def gen_gnu_dg_pattern_str(opcode, pattern_str, api_count):
+        if opcode == "vsetvl":
+            #pylint: disable=line-too-long
+            return rf"/* {{ dg-final {{ scan-assembler-times {{vsetvli\s+[a-x0-9]+,\s*[a-x0-9]+,\s*e[0-9]+,\s*m[f]?[1248],\s*t[au],\s*m[au]}} {api_count} }} }} */" + "\n"
+        elif opcode == "vsetvlmax":
+            #pylint: disable=line-too-long
+            return rf"/* {{ dg-final {{ scan-assembler-times {{vsetvli\s+[a-x0-9]+,\s*zero,\s*e[0-9]+,\s*m[f]?[1248],\s*t[au],\s*m[au]}} {api_count} }} }} */" + "\n"
+        elif opcode in [
+            "vlmul_ext_v", "vlmul_trunc_v", "vreinterpret", "vundefined", "vfmv"
+        ]:
+            #pylint: disable=line-too-long
+            return rf"/* {{ dg-final {{ scan-assembler-times {{{pattern_str}\s+[,\sa-x0-9()]+}} {api_count} }} }} */" + "\n"
+        elif opcode in ["vmv", "vxor", "vsub", "vsbc", "vrsub", "vremu", "vrem", "vor", "vnmsub", "vnmsac", \
+                        "vmul", "vmsne", "vmsltu", "vmslt", "vmsleu", "vmsle", "vmsgtu", "vmsgt", "vmsgeu", \
+                        "vmsge", "vmseq", "vmsbc", "vminu", "vmin", "vmerge", "vmaxu", "vmax", "vmadd", "vmadc", \
+                        "vmacc", "vdivu", "vdiv", "vand", "vadd", "vadc", "vget", "vset", "vcreate"]:
+            return rf"/* {{ dg-final {{ scan-assembler-times {{{pattern_str}\s+}} {api_count} }} }} */" + "\n"
+        else:
+            #pylint: disable=line-too-long
+            return rf"/* {{ dg-final {{ scan-assembler-times {{vseti?vli\s+[a-z0-9]+,\s*[a-z0-9]+,\s*e[0-9]+,\s*mf?[1248],\s*t[au],\s*m[au]\s+{pattern_str}\s+}} {api_count} }} }} */" + "\n"
 
-    if r"\." not in pattern_str:
-      pattern_str = rf"{pattern_str}\.[ivxfswum.]+"
-    else:
-      pattern_str = rf"{pattern_str}[ivxfswum.]*"
+    @staticmethod
+    def get_overloaded_op_name(name):
+        sn = name.split("_")
+        if name.startswith("sf_"):
+            if name.startswith("sf_vfwcvt") or name.startswith("sf_vfncvt"):
+                overloaded_name = "_".join(sn[0:3])
+            else:
+                overloaded_name = "_".join(sn[0:-1])
+        elif name in ["vlmul_trunc", "vlmul_ext"]:
+            overloaded_name = name
+        elif name.find("cvt") != -1:
+            if name.find("cvt_rod") != -1 or name.find("cvt_rtz") != -1:
+                overloaded_name = "_".join(sn[0:3])
+            else:
+                overloaded_name = "_".join(sn[0:2])
+        elif any(op in name for op in ["reinterpret", "vget"]):
+            overloaded_name = "_".join([sn[0], sn[-1]])
+        elif any(op in name for op in ["vlmul_ext", "vlmul_trunc"]):
+            overloaded_name = "_".join([sn[0], sn[1], sn[-1]])
+        elif any(op in name for op in [
+            "vzext", "vsext", "vwadd", "vwsub", "vfwadd", "vfwsub", "vwadd",
+            "vwsub", "vfwadd", "vfwsub", "vmv", "vfmv", "vsm4r", "vaesef", "vaesem",
+            "vaesdf", "vaesdm"
+        ]):
+            # 2. compiler can not distinguish *.wx and *.vx, need encode them in
+            #    suffix, for example:
+            #    vuint32m1_t vwaddu (vuint32m1_t op1, uint16_t op2);  // vwaddu.wx
+            #    vuint64m2_t vwaddu (vuint32m1_t op1, uint32_t op2);  // vwaddu.vx
+            # 3. the signature of vmv series are similar, for example
+            #    vmv_v_v_i8mf8    -> vint8mf8_t vmv(vint8mf8_t src, size_t vl)
+            #    vmv_x_s_i8mf8_i8 -> int8_t     vmv(vint8mf8_t src)
+            overloaded_name = "_".join(sn[0:2])
+        else:
+            overloaded_name = sn[0]
+        # append policy suffix if need
+        if sn[-1] in [
+            "ta", "tu", "tama", "tuma", "tamu", "tumu", "ma", "mu", "tam", "tum"
+        ]:
+            overloaded_name += "_" + sn[-1]
+        if sn[-1] == "rm" and sn[-2] in [
+            "ta", "tu", "tama", "tuma", "tamu", "tumu", "ma", "mu", "tam", "tum"
+        ]:
+            overloaded_name += "_" + sn[-2]
 
-    return pattern_str
+        # Follows the naming guideline under riscv-c-api-doc to add the `__riscv_`
+        # suffix for all RVV intrinsics.
+        overloaded_name = Generator.func_name(overloaded_name)
 
-  @staticmethod
-  def gen_gnu_dg_pattern_str(opcode, pattern_str, api_count):
-    if opcode == "vsetvl":
-      #pylint: disable=line-too-long
-      return rf"/* {{ dg-final {{ scan-assembler-times {{vsetvli\s+[a-x0-9]+,\s*[a-x0-9]+,\s*e[0-9]+,\s*m[f]?[1248],\s*t[au],\s*m[au]}} {api_count} }} }} */" + "\n"
-    elif opcode == "vsetvlmax":
-      #pylint: disable=line-too-long
-      return rf"/* {{ dg-final {{ scan-assembler-times {{vsetvli\s+[a-x0-9]+,\s*zero,\s*e[0-9]+,\s*m[f]?[1248],\s*t[au],\s*m[au]}} {api_count} }} }} */" + "\n"
-    elif opcode in [
-        "vlmul_ext_v", "vlmul_trunc_v", "vreinterpret", "vundefined", "vfmv"
-    ]:
-      #pylint: disable=line-too-long
-      return rf"/* {{ dg-final {{ scan-assembler-times {{{pattern_str}\s+[,\sa-x0-9()]+}} {api_count} }} }} */" + "\n"
-    elif opcode in ["vmv", "vxor", "vsub", "vsbc", "vrsub", "vremu", "vrem", "vor", "vnmsub", "vnmsac", \
-                    "vmul", "vmsne", "vmsltu", "vmslt", "vmsleu", "vmsle", "vmsgtu", "vmsgt", "vmsgeu", \
-                    "vmsge", "vmseq", "vmsbc", "vminu", "vmin", "vmerge", "vmaxu", "vmax", "vmadd", "vmadc", \
-                    "vmacc", "vdivu", "vdiv", "vand", "vadd", "vadc", "vget", "vset", "vcreate"]:
-      return rf"/* {{ dg-final {{ scan-assembler-times {{{pattern_str}\s+}} {api_count} }} }} */" + "\n"
-    else:
-      #pylint: disable=line-too-long
-      return rf"/* {{ dg-final {{ scan-assembler-times {{vseti?vli\s+[a-z0-9]+,\s*[a-z0-9]+,\s*e[0-9]+,\s*mf?[1248],\s*t[au],\s*m[au]\s+{pattern_str}\s+}} {api_count} }} }} */" + "\n"
+        return overloaded_name
 
-  @staticmethod
-  def get_overloaded_op_name(name):
-    sn = name.split("_")
-    if name.startswith("sf_"):
-      if name.startswith("sf_vfwcvt") or name.startswith("sf_vfncvt"):
-        overloaded_name = "_".join(sn[0:3])
-      else:
-        overloaded_name = "_".join(sn[0:-1])
-    elif name in ["vlmul_trunc", "vlmul_ext"]:
-      overloaded_name = name
-    elif name.find("cvt") != -1:
-      if name.find("cvt_rod") != -1 or name.find("cvt_rtz") != -1:
-        overloaded_name = "_".join(sn[0:3])
-      else:
-        overloaded_name = "_".join(sn[0:2])
-    elif any(op in name for op in ["reinterpret", "vget"]):
-      overloaded_name = "_".join([sn[0], sn[-1]])
-    elif any(op in name for op in ["vlmul_ext", "vlmul_trunc"]):
-      overloaded_name = "_".join([sn[0], sn[1], sn[-1]])
-    elif any(op in name for op in [
-        "vzext", "vsext", "vwadd", "vwsub", "vfwadd", "vfwsub", "vwadd",
-        "vwsub", "vfwadd", "vfwsub", "vmv", "vfmv", "vsm4r", "vaesef", "vaesem",
-        "vaesdf", "vaesdm"
-    ]):
-      # 2. compiler can not distinguish *.wx and *.vx, need encode them in
-      #    suffix, for example:
-      #    vuint32m1_t vwaddu (vuint32m1_t op1, uint16_t op2);  // vwaddu.wx
-      #    vuint64m2_t vwaddu (vuint32m1_t op1, uint32_t op2);  // vwaddu.vx
-      # 3. the signature of vmv series are similar, for example
-      #    vmv_v_v_i8mf8    -> vint8mf8_t vmv(vint8mf8_t src, size_t vl)
-      #    vmv_x_s_i8mf8_i8 -> int8_t     vmv(vint8mf8_t src)
-      overloaded_name = "_".join(sn[0:2])
-    else:
-      overloaded_name = sn[0]
-    # append policy suffix if need
-    if sn[-1] in [
-        "ta", "tu", "tama", "tuma", "tamu", "tumu", "ma", "mu", "tam", "tum"
-    ]:
-      overloaded_name += "_" + sn[-1]
-    if sn[-1] == "rm" and sn[-2] in [
-        "ta", "tu", "tama", "tuma", "tamu", "tumu", "ma", "mu", "tam", "tum"
-    ]:
-      overloaded_name += "_" + sn[-2]
-
-    # Follows the naming guideline under riscv-c-api-doc to add the `__riscv_`
-    # suffix for all RVV intrinsics.
-    overloaded_name = Generator.func_name(overloaded_name)
-
-    return overloaded_name
-
-  # Report how many functions are generated by the generator
-  def report_summary(self):
-    print(f"Generator generated \x1b[1;31m{len(self.generated_functions_set)} \
+    # Report how many functions are generated by the generator
+    def report_summary(self):
+        print(f"Generator generated \x1b[1;31m{len(self.generated_functions_set)} \
       \x1b[0mfunctions")
 
-  def post_gen(self):
-    raise NotImplementedError
+    def post_gen(self):
+        raise NotImplementedError
 
-  def emit_function_group_description(self, description):
-    pass
+    def emit_function_group_description(self, description):
+        pass
 
 
 class DocGenerator(Generator):
-  """
+    """
   Derived generator for document that collects function definitions.
   """
 
-  def __init__(self, f, is_all_in_one, has_tail_policy):
-    super().__init__()
-    self.is_all_in_one = is_all_in_one
-    self.has_tail_policy = has_tail_policy
-    # This is used under OverloadedDocGenerator::function_group to emit
-    # text description when all intrinsics under op_list does not have an
-    # overloaded variants.
-    self.do_not_have_overloaded_variant = False
-    if self.is_all_in_one:
-      self.fd = f
-    else:
-      self.folder = f
-      if not os.path.exists(self.folder):
-        os.makedirs(self.folder)
-      if not os.path.isdir(self.folder):
-        raise FileNotFoundError(f"{self.folder} not dir, but it must be a dir.")
-      self.group_counter = 0
-      self.fd = None
+    def __init__(self, f, is_all_in_one, has_tail_policy):
+        super().__init__()
+        self.is_all_in_one = is_all_in_one
+        self.has_tail_policy = has_tail_policy
+        # This is used under OverloadedDocGenerator::function_group to emit
+        # text description when all intrinsics under op_list does not have an
+        # overloaded variants.
+        self.do_not_have_overloaded_variant = False
+        if self.is_all_in_one:
+            self.fd = f
+        else:
+            self.folder = f
+            if not os.path.exists(self.folder):
+                os.makedirs(self.folder)
+            if not os.path.isdir(self.folder):
+                raise FileNotFoundError(f"{self.folder} not dir, but it must be a dir.")
+            self.group_counter = 0
+            self.fd = None
 
-  def write(self, text):
-    self.fd.write(text)
+    def write(self, text):
+        self.fd.write(text)
 
-  def write_title(self, text, link):
-    if self.has_tail_policy:
-      self.fd.write("\n[[policy-variant-" + link + "]]\n==== " + text + "\n")
-    else:
-      self.fd.write("\n[[" + link + "]]\n==== " + text + "\n")
+    def write_title(self, text, link):
+        if self.has_tail_policy:
+            self.fd.write("\n[[policy-variant-" + link + "]]\n==== " + text + "\n")
+        else:
+            self.fd.write("\n[[" + link + "]]\n==== " + text + "\n")
 
-  def inst_group_prologue(self):
-    s = "\n[,c]\n----\n"
-    self.write(s)
-    return s
+    def inst_group_prologue(self):
+        s = "\n[,c]\n----\n"
+        self.write(s)
+        return s
 
-  def inst_group_epilogue(self):
-    s = "----\n"
-    self.write(s)
-    return s
+    def inst_group_epilogue(self):
+        s = "----\n"
+        self.write(s)
+        return s
 
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    self.write_title(title, link)
-    if self.has_tail_policy and len(decorator_list) == 0:
-      s = "Intrinsics here don't have a policy variant.\n"
-      self.write(s)
-      return
-    if self.do_not_have_overloaded_variant:
-      self.write("Intrinsics here don't have an overloaded variant.\n")
-      return
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        self.write_title(title, link)
+        if self.has_tail_policy and len(decorator_list) == 0:
+            s = "Intrinsics here don't have a policy variant.\n"
+            self.write(s)
+            return
+        if self.do_not_have_overloaded_variant:
+            self.write("Intrinsics here don't have an overloaded variant.\n")
+            return
 
-    super().function_group(
-        template,
-        title,
-        link,
-        op_list,
-        type_list,
-        sew_list,
-        lmul_list,
-        decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+        super().function_group(
+            template,
+            title,
+            link,
+            op_list,
+            type_list,
+            sew_list,
+            lmul_list,
+            decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
 
-  def func(self, inst_info, name, return_type, **kwargs):
-    name = Generator.func_name(name)
-    # pylint: disable=unused-argument
-    # FIXME: inst_info is currently only used by RIFGenerator.
-    self.generated_functions_set.add(name)
-    args = ", ".join(map(lambda a: f"{a[1]} {a[0]}", kwargs.items()))
-    # "T * name" to "T *name"
-    args = args.replace("* ", "*")
-    s = f"{return_type} {name} ({args});\n"
-    self.write(s)
+    def func(self, inst_info, name, return_type, **kwargs):
+        name = Generator.func_name(name)
+        # pylint: disable=unused-argument
+        # FIXME: inst_info is currently only used by RIFGenerator.
+        self.generated_functions_set.add(name)
+        args = ", ".join(map(lambda a: f"{a[1]} {a[0]}", kwargs.items()))
+        # "T * name" to "T *name"
+        args = args.replace("* ", "*")
+        s = f"{return_type} {name} ({args});\n"
+        self.write(s)
 
-  def start_group(self, group_name):
-    # pylint: disable=consider-using-with
-    # NOTE: If is_all_in_one is False, separate files of the grouped intrinsics
-    # will be created, therefore we are allowing overriding the file descriptor
-    # here.
-    if not self.is_all_in_one:
-      file_name = f"{self.group_counter:02d}_{group_name}.adoc"
-      file_name = file_name.replace(" ", "_")
-      file_name = file_name.replace("/", "_")
-      file_name = file_name.replace("(", "")
-      file_name = file_name.replace(")", "")
-      file_name = file_name.lower()
-      self.group_counter += 1
+    def start_group(self, group_name):
+        # pylint: disable=consider-using-with
+        # NOTE: If is_all_in_one is False, separate files of the grouped intrinsics
+        # will be created, therefore we are allowing overriding the file descriptor
+        # here.
+        if not self.is_all_in_one:
+            file_name = f"{self.group_counter:02d}_{group_name}.adoc"
+            file_name = file_name.replace(" ", "_")
+            file_name = file_name.replace("/", "_")
+            file_name = file_name.replace("(", "")
+            file_name = file_name.replace(")", "")
+            file_name = file_name.lower()
+            self.group_counter += 1
 
-      if self.fd is not None:
-        self.fd.close()
-      self.fd = open(
-          os.path.join(self.folder, file_name), "w", encoding="utf-8")
-    self.write(f"\n=== {group_name}\n")
+            if self.fd is not None:
+                self.fd.close()
+            self.fd = open(
+                os.path.join(self.folder, file_name), "w", encoding="utf-8")
+        self.write(f"\n=== {group_name}\n")
 
-  def emit_function_group_description(self, description):
-    if description:
-      self.write(f"{description}\n")
+    def emit_function_group_description(self, description):
+        if description:
+            self.write(f"{description}\n")
 
 
 class OverloadedDocGenerator(DocGenerator):
-  """
+    """
   Derived generator for documents that collects overloaded function definitions
   """
 
-  def write_title(self, text, link):
-    if self.has_tail_policy:
-      self.fd.write("\n[[policy-variant-overloaded" + link + "]]\n==== " +
-                    text + "\n")
-    else:
-      self.fd.write("\n[[overloaded-" + link + "]]\n==== " + text + "\n")
+    def write_title(self, text, link):
+        if self.has_tail_policy:
+            self.fd.write("\n[[policy-variant-overloaded" + link + "]]\n==== " +
+                          text + "\n")
+        else:
+            self.fd.write("\n[[overloaded-" + link + "]]\n==== " + text + "\n")
 
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    self.do_not_have_overloaded_variant = True
-    for op in op_list:
-      if Generator.is_support_overloaded(op):
-        self.do_not_have_overloaded_variant = False
-    super().function_group(
-        template,
-        title,
-        link,
-        op_list,
-        type_list,
-        sew_list,
-        lmul_list,
-        decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        self.do_not_have_overloaded_variant = True
+        for op in op_list:
+            if Generator.is_support_overloaded(op):
+                self.do_not_have_overloaded_variant = False
+        super().function_group(
+            template,
+            title,
+            link,
+            op_list,
+            type_list,
+            sew_list,
+            lmul_list,
+            decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
 
-  def func(self, inst_info, name, return_type, **kwargs):
-    func_name = Generator.func_name(name)
-    if not Generator.is_support_overloaded(name, **kwargs):
-      return
-    func_name = Generator.get_overloaded_op_name(name)
-    # Strip the `__riscv_` prefix here because it will be added back again in
-    # Generator.func()
-    func_name = func_name[8:]
+    def func(self, inst_info, name, return_type, **kwargs):
+        func_name = Generator.func_name(name)
+        if not Generator.is_support_overloaded(name, **kwargs):
+            return
+        func_name = Generator.get_overloaded_op_name(name)
+        # Strip the `__riscv_` prefix here because it will be added back again in
+        # Generator.func()
+        func_name = func_name[8:]
 
-    super().func(inst_info, func_name, return_type, **kwargs)
+        super().func(inst_info, func_name, return_type, **kwargs)
 
 
 def vector_type_p(t):
-  return t.startswith("vint") or \
-      t.startswith("vuint") or \
-      t.startswith("vfloat")
+    return t.startswith("vint") or \
+        t.startswith("vuint") or \
+        t.startswith("vfloat")
 
 
 class APITestGenerator(Generator):
-  """
+    """
   Derived generator for api unit tests.
   """
 
-  def __init__(self, f, is_overloaded, toolchain_type, has_tail_policy):
-    super().__init__()
-    self.is_overloaded = is_overloaded
-    self.folder = f
-    self.toolchain_type = toolchain_type
-    self.has_tail_policy = has_tail_policy
-    if not os.path.exists(self.folder):
-      os.makedirs(self.folder)
-    if not os.path.isdir(self.folder):
-      raise FileNotFoundError(f"{self.folder} not dir, but it must be a dir.")
-    self.fd = None
-    self.test_files = []
-    # test file name candidates which are declared in inst.py, it could have
-    # different op name
-    self.test_file_names = []
+    def __init__(self, f, is_overloaded, toolchain_type, has_tail_policy):
+        super().__init__()
+        self.is_overloaded = is_overloaded
+        self.folder = f
+        self.toolchain_type = toolchain_type
+        self.has_tail_policy = has_tail_policy
+        if not os.path.exists(self.folder):
+            os.makedirs(self.folder)
+        if not os.path.isdir(self.folder):
+            raise FileNotFoundError(f"{self.folder} not dir, but it must be a dir.")
+        self.fd = None
+        self.test_files = []
+        # test file name candidates which are declared in inst.py, it could have
+        # different op name
+        self.test_file_names = []
 
-  def write(self, text):
-    pass
+    def write(self, text):
+        pass
 
-  def start_group(self, group_name):
-    pass
+    def start_group(self, group_name):
+        pass
 
-  def inst_group_prologue(self):
-    return ""
+    def inst_group_prologue(self):
+        return ""
 
-  def inst_group_epilogue(self):
-    return ""
+    def inst_group_epilogue(self):
+        return ""
 
-  def write_file_header(self, has_float_type, has_bfloat16_type, requires_exts):
-    #pylint: disable=line-too-long
-    dynamic_llvm_header_prologue = r"""// REQUIRES: riscv-registered-target
+    def write_file_header(self, has_float_type, has_bfloat16_type, requires_exts):
+        #pylint: disable=line-too-long
+        dynamic_llvm_header_prologue = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -disable-O0-optnone \
 """
 
-    dynamic_llvm_header_epilogue = r"""// RUN:   -target-feature +experimental \
+        dynamic_llvm_header_epilogue = r"""// RUN:   -target-feature +experimental \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
 """
 
-    int_llvm_header = r"""// REQUIRES: riscv-registered-target
+        int_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v -disable-O0-optnone \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
 """
-    float_llvm_header = r"""// REQUIRES: riscv-registered-target
+        float_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v -target-feature +zfh \
 // RUN:   -target-feature +zvfh -disable-O0-optnone \
 // RUN:   -emit-llvm %s -o - | opt -S -passes=mem2reg | \
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
 """
-    bfloat16_llvm_header = r"""// REQUIRES: riscv-registered-target
+        bfloat16_llvm_header = r"""// REQUIRES: riscv-registered-target
 // RUN: %clang_cc1 -triple riscv64 -target-feature +v \
 // RUN:   -target-feature +zvfbfmin \
 // RUN:   -target-feature +zvfbfwma -disable-O0-optnone \
@@ -552,279 +552,278 @@ class APITestGenerator(Generator):
 // RUN:   FileCheck --check-prefix=CHECK-RV64 %s
 
 """
-    gnu_header = (
-        r"""/* { dg-do compile } */
+        gnu_header = (
+                r"""/* { dg-do compile } */
 /* { dg-options """ + '"' + "-march=rv64gcv_zvfh -mabi=lp64d" +
-        r""" -Wno-psabi -O3 -fno-schedule-insns -fno-schedule-insns2" } */
+                r""" -Wno-psabi -O3 -fno-schedule-insns -fno-schedule-insns2" } */
 
 """)
 
-    # Dynamic header is used when the requires_exts is not empty.
-    if requires_exts:
-      dynamic_llvm_header = dynamic_llvm_header_prologue
-      for ext in requires_exts:
-        # Due to requirements of SEW==32 intrinsics will be used
-        # in the LLVM test header, the extension "zvknha"
-        # should be replaced with "zvknhb" for the following
-        # SEW==64 intrinsics.
-        if ext == "zvknha":
-          ext = "zvknhb"
-        dynamic_llvm_header += f"// RUN:   -target-feature +{ext} \\\n"
-      dynamic_llvm_header += dynamic_llvm_header_epilogue
+        # Dynamic header is used when the requires_exts is not empty.
+        if requires_exts:
+            dynamic_llvm_header = dynamic_llvm_header_prologue
+            for ext in requires_exts:
+                # Due to requirements of SEW==32 intrinsics will be used
+                # in the LLVM test header, the extension "zvknha"
+                # should be replaced with "zvknhb" for the following
+                # SEW==64 intrinsics.
+                if ext == "zvknha":
+                    ext = "zvknhb"
+                dynamic_llvm_header += f"// RUN:   -target-feature +{ext} \\\n"
+            dynamic_llvm_header += dynamic_llvm_header_epilogue
 
-    if self.toolchain_type == ToolChainType.LLVM:
-      if requires_exts:
-        self.fd.write(dynamic_llvm_header)
-      elif has_bfloat16_type:
-        self.fd.write(bfloat16_llvm_header)
-      elif has_float_type:
-        self.fd.write(float_llvm_header)
-      else:
-        self.fd.write(int_llvm_header)
-    elif self.toolchain_type == ToolChainType.GNU:
-      self.fd.write(gnu_header)
-    else:
-      self.fd.write("#include <stdint.h>\n")
-    self.fd.write("#include <riscv_vector.h>\n")
+        if self.toolchain_type == ToolChainType.LLVM:
+            if requires_exts:
+                self.fd.write(dynamic_llvm_header)
+            elif has_bfloat16_type:
+                self.fd.write(bfloat16_llvm_header)
+            elif has_float_type:
+                self.fd.write(float_llvm_header)
+            else:
+                self.fd.write(int_llvm_header)
+        elif self.toolchain_type == ToolChainType.GNU:
+            self.fd.write(gnu_header)
+        else:
+            self.fd.write("#include <stdint.h>\n")
+        self.fd.write("#include <riscv_vector.h>\n")
 
-  def func(self, inst_info, name, return_type, **kwargs):
-    if self.is_overloaded and not Generator.is_support_overloaded(
-        name, **kwargs):
-      return
+    def func(self, inst_info, name, return_type, **kwargs):
+        if self.is_overloaded and not Generator.is_support_overloaded(
+                name, **kwargs):
+            return
 
-    non_overloaded_func_name = Generator.func_name(name)
-    overloaded_func_name = Generator.get_overloaded_op_name(name)
-    test_file_name = f"{inst_info.OP}.c"
+        non_overloaded_func_name = Generator.func_name(name)
+        overloaded_func_name = Generator.get_overloaded_op_name(name)
+        test_file_name = f"{inst_info.OP}.c"
 
-    if self.is_overloaded:
-      func_name = overloaded_func_name
-    else:
-      func_name = non_overloaded_func_name
+        if self.is_overloaded:
+            func_name = overloaded_func_name
+        else:
+            func_name = non_overloaded_func_name
 
-    if test_file_name not in self.test_files:
-      mode = "w"
-      header = True
-    else:
-      mode = "a"
-      header = False
-    if self.fd is not None:
-      self.fd.close()
+        if test_file_name not in self.test_files:
+            mode = "w"
+            header = True
+        else:
+            mode = "a"
+            header = False
+        if self.fd is not None:
+            self.fd.close()
 
-    self.test_files.append(test_file_name)
-    # pylint: disable=consider-using-with
-    # NOTE(FIXME): For APITestGenerator, every function will own an individual
-    # C source file. Overriding here is acceptable but shows the problem that
-    # the long-living file descriptor is not useful in every generator.
-    self.fd = open(
-        os.path.join(self.folder, test_file_name), mode, encoding="utf-8")
+        self.test_files.append(test_file_name)
+        # pylint: disable=consider-using-with
+        # NOTE(FIXME): For APITestGenerator, every function will own an individual
+        # C source file. Overriding here is acceptable but shows the problem that
+        # the long-living file descriptor is not useful in every generator.
+        self.fd = open(
+            os.path.join(self.folder, test_file_name), mode, encoding="utf-8")
 
-    stripped_prefix_non_overloaded_func_name = non_overloaded_func_name[8:]
-    non_overloaded_func_name = "test_" + \
-                                stripped_prefix_non_overloaded_func_name
-    self.generated_functions_set.add(non_overloaded_func_name)
-    args = ", ".join(map(lambda a: f"{a[1]} {a[0]}", kwargs.items()))
-    # "T * name" to "T *name"
-    args = args.replace("* ", "*")
-    func_decl = f"{return_type} {non_overloaded_func_name}({args});\n"
+        stripped_prefix_non_overloaded_func_name = non_overloaded_func_name[8:]
+        non_overloaded_func_name = "test_" + \
+                                   stripped_prefix_non_overloaded_func_name
+        self.generated_functions_set.add(non_overloaded_func_name)
+        args = ", ".join(map(lambda a: f"{a[1]} {a[0]}", kwargs.items()))
+        # "T * name" to "T *name"
+        args = args.replace("* ", "*")
+        func_decl = f"{return_type} {non_overloaded_func_name}({args});\n"
 
-    # Strip redundant parameters in function declaration because the intrinsic
-    # requires an immediate to be provided to the parameter.
-    # For "vxrm" parameter of the fixed-point intrinsics, value for it must be
-    # an immediate.
-    func_decl = func_decl.replace(", unsigned int vxrm", "")
-    func_decl = func_decl.replace(", size_t uimm", "")
+        # Strip redundant parameters in function declaration because the intrinsic
+        # requires an immediate to be provided to the parameter.
+        # For "vxrm" parameter of the fixed-point intrinsics, value for it must be
+        # an immediate.
+        func_decl = func_decl.replace(", unsigned int vxrm", "")
+        func_decl = func_decl.replace(", size_t uimm", "")
 
-    # For "frm" parameter of the floating-point intrinsics, value for it must
-    # be an immediate.
-    func_decl = func_decl.replace(", unsigned int frm", "")
+        # For "frm" parameter of the floating-point intrinsics, value for it must
+        # be an immediate.
+        func_decl = func_decl.replace(", unsigned int frm", "")
 
-    # NOTE(FIXME): This logic is dependent to `TYPES` under constant.py.
-    # Hardcoded that if an an intrinsic has a floating-point type variant, the
-    # variant will be enumerated before the integer type variant. To fix this
-    # righteously, there should be a function to determine if an intrinsic
-    # has a floating-point variant and have the header emission depend on it.
-    has_float_type = func_decl.find("vfloat") != -1
-    has_bfloat16_type = func_decl.find("bf16") != -1
-    # NOTE(FIXME): This is logic as a hard fix to test case header emission.
-    has_float_type_variant_inst = [
-        "macc", "nmacc", "msac", "nmsac", "madd", "nmadd", "msub", "nmsub",
-        "wmacc", "wnmacc", "wmsac", "wnmsac", "eq", "ne", "lt", "le", "gt",
-        "ge", "merge", "mv", "reinterpret"
-    ]
+        # NOTE(FIXME): This logic is dependent to `TYPES` under constant.py.
+        # Hardcoded that if an an intrinsic has a floating-point type variant, the
+        # variant will be enumerated before the integer type variant. To fix this
+        # righteously, there should be a function to determine if an intrinsic
+        # has a floating-point variant and have the header emission depend on it.
+        has_float_type = func_decl.find("vfloat") != -1
+        has_bfloat16_type = func_decl.find("bf16") != -1
+        # NOTE(FIXME): This is logic as a hard fix to test case header emission.
+        has_float_type_variant_inst = [
+            "macc", "nmacc", "msac", "nmsac", "madd", "nmadd", "msub", "nmsub",
+            "wmacc", "wnmacc", "wmsac", "wnmsac", "eq", "ne", "lt", "le", "gt",
+            "ge", "merge", "mv", "reinterpret"
+        ]
 
-    for i in has_float_type_variant_inst:
-      if i in func_decl:
-        has_float_type = True
+        for i in has_float_type_variant_inst:
+            if i in func_decl:
+                has_float_type = True
 
-    if header:
-      self.write_file_header(has_float_type, has_bfloat16_type,
-                             inst_info.get_required_exts())
+        if header:
+            self.write_file_header(has_float_type, has_bfloat16_type,
+                                   inst_info.get_required_exts())
 
-    def output_call_arg(arg_name, type_name):
-      if ((name.startswith("vget") or name.startswith("vset")) \
-          and ((arg_name == "index" and type_name == "size_t"))) \
-         or arg_name.startswith("bit_field") or arg_name.startswith("simm"):
-        return "0"
+        def output_call_arg(arg_name, type_name):
+            if ((name.startswith("vget") or name.startswith("vset")) \
+                and ((arg_name == "index" and type_name == "size_t"))) \
+                    or arg_name.startswith("bit_field") or arg_name.startswith("simm"):
+                return "0"
 
-      if arg_name == "vxrm":
-        return "__RISCV_VXRM_RNU"
+            if arg_name == "vxrm":
+                return "__RISCV_VXRM_RNU"
 
-      if arg_name == "frm":
-        return "__RISCV_FRM_RNE"
+            if arg_name == "frm":
+                return "__RISCV_FRM_RNE"
 
-      if arg_name == "uimm":
-        return "0"
+            if arg_name == "uimm":
+                return "0"
 
-      return arg_name
+            return arg_name
 
-    # Write test func body.
-    # Write test func. func_decl has end of ";" and "\n"
-    self.fd.write("\n")
-    self.fd.write(func_decl[:-2])
-    self.fd.write(" {\n")
+        # Write test func body.
+        # Write test func. func_decl has end of ";" and "\n"
+        self.fd.write("\n")
+        self.fd.write(func_decl[:-2])
+        self.fd.write(" {\n")
 
-    self.fd.write(f"  return {func_name}(")
-    call_args = ", ".join(
-        map(lambda a: output_call_arg(a[0], a[1]), kwargs.items()))
-    self.fd.write(call_args)
-    self.fd.write(");\n")
-    self.fd.write("}\n")
-    self.fd.flush()  # To make sure the data flushed when post_gen.
+        self.fd.write(f"  return {func_name}(")
+        call_args = ", ".join(
+            map(lambda a: output_call_arg(a[0], a[1]), kwargs.items()))
+        self.fd.write(call_args)
+        self.fd.write(");\n")
+        self.fd.write("}\n")
+        self.fd.flush()  # To make sure the data flushed when post_gen.
 
-  def post_gen(self):
-    if self.toolchain_type == ToolChainType.GNU:
-      for test_file in set(self.test_files):
-        with open(
-            os.path.join(self.folder, test_file), "r",
-            encoding="utf-8") as self.fd:
-          api_count = self.fd.read().count("__riscv_")
-        self.fd.close()
+    def post_gen(self):
+        if self.toolchain_type == ToolChainType.GNU:
+            for test_file in set(self.test_files):
+                with open(
+                        os.path.join(self.folder, test_file), "r",
+                        encoding="utf-8") as self.fd:
+                    api_count = self.fd.read().count("__riscv_")
+                self.fd.close()
 
-        api_count = Generator.adjust_api_count_for_vle(
-            api_count,
-            test_file,
-            self.has_tail_policy,
-            self.is_overloaded,
-        )
+                api_count = Generator.adjust_api_count_for_vle(
+                    api_count,
+                    test_file,
+                    self.has_tail_policy,
+                    self.is_overloaded,
+                )
 
-        opcode = test_file[:-2]
-        pattern_str = Generator.adjust_gnu_pattern_str(opcode)
-        dg_pattern_str = Generator.gen_gnu_dg_pattern_str(
-            opcode, pattern_str, api_count)
+                opcode = test_file[:-2]
+                pattern_str = Generator.adjust_gnu_pattern_str(opcode)
+                dg_pattern_str = Generator.gen_gnu_dg_pattern_str(
+                    opcode, pattern_str, api_count)
 
-        with open(
-            os.path.join(self.folder, test_file), "a",
-            encoding="utf-8") as self.fd:
-          self.fd.write(dg_pattern_str)
-        self.fd.close()
+                with open(
+                        os.path.join(self.folder, test_file), "a",
+                        encoding="utf-8") as self.fd:
+                    self.fd.write(dg_pattern_str)
+                self.fd.close()
 
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    self.test_file_names = op_list
-    template.render(
-        G=self,
-        op_list=op_list,
-        type_list=type_list,
-        sew_list=sew_list,
-        lmul_list=lmul_list,
-        decorator_list=decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        self.test_file_names = op_list
+        template.render(
+            G=self,
+            op_list=op_list,
+            type_list=type_list,
+            sew_list=sew_list,
+            lmul_list=lmul_list,
+            decorator_list=decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
 
 
 class Grouper(Generator):
-  """
+    """
   Derived generator for structured grouping in testing-report (testing script)
   """
 
-  op_list = []
+    op_list = []
 
-  def __init__(self):
-    super().__init__()
-    self.func_group = {}  # Func_name -> (group, sub-group).
-    self.groups = collections.OrderedDict()  # Set of group name.
-    self.current_group = None
-    self.current_sub_group = None
+    def __init__(self):
+        super().__init__()
+        self.func_group = {}  # Func_name -> (group, sub-group).
+        self.groups = collections.OrderedDict()  # Set of group name.
+        self.current_group = None
+        self.current_sub_group = None
 
-  def start_group(self, group_name):
-    self.current_group = group_name
-    if group_name not in self.groups:
-      self.groups[group_name] = []
+    def start_group(self, group_name):
+        self.current_group = group_name
+        if group_name not in self.groups:
+            self.groups[group_name] = []
 
-  def inst_group_prologue(self):
-    return ""
+    def inst_group_prologue(self):
+        return ""
 
-  def inst_group_epilogue(self):
-    return ""
+    def inst_group_epilogue(self):
+        return ""
 
-  def write(self, text):
-    pass
+    def write(self, text):
+        pass
 
-  def func(self, inst_info, name, return_type, **kwargs):
+    def func(self, inst_info, name, return_type, **kwargs):
+        func_name = Generator.func_name(name)
+        overloaded_func_name = Generator.get_overloaded_op_name(name)
+        test_file_name = inst_info.OP
 
-    func_name = Generator.func_name(name)
-    overloaded_func_name = Generator.get_overloaded_op_name(name)
-    test_file_name = inst_info.OP
+        grp_info = (self.current_group, self.current_sub_group)
 
-    grp_info = (self.current_group, self.current_sub_group)
+        self.func_group[test_file_name] = grp_info
+        self.func_group[func_name] = grp_info
+        self.func_group[overloaded_func_name] = grp_info
 
-    self.func_group[test_file_name] = grp_info
-    self.func_group[func_name] = grp_info
-    self.func_group[overloaded_func_name] = grp_info
+    def query_group_desc(self, func_name):
+        return self.func_group[func_name]
 
-  def query_group_desc(self, func_name):
-    return self.func_group[func_name]
-
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    self.op_list = op_list
-    self.groups[self.current_group].append(title)
-    self.current_sub_group = title
-    template.render(
-        G=self,
-        op_list=op_list,
-        type_list=type_list,
-        sew_list=sew_list,
-        lmul_list=lmul_list,
-        decorator_list=decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        self.op_list = op_list
+        self.groups[self.current_group].append(title)
+        self.current_sub_group = title
+        template.render(
+            G=self,
+            op_list=op_list,
+            type_list=type_list,
+            sew_list=sew_list,
+            lmul_list=lmul_list,
+            decorator_list=decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
 
 
 class CompatibleHeaderGenerator(Generator):
-  """
+    """
   This generator is responsible for the compatible header for 0.10 to v0.11
   (or higher).
   """
 
-  def __init__(self, fd, is_overloaded, has_tail_policy):
-    #pylint: disable=line-too-long
-    super().__init__()
-    self.is_overloaded = is_overloaded
-    self.has_tail_policy = has_tail_policy
-    self.fd = fd
-    # Store parameter count for the override macro trick
-    self.override_macro_param_new_unmasked_func_name_and_param_cnt = {}
-    self.override_macro_param_new_masked_func_name_and_param_cnt = {}
-    common_include = """
+    def __init__(self, fd, is_overloaded, has_tail_policy):
+        #pylint: disable=line-too-long
+        super().__init__()
+        self.is_overloaded = is_overloaded
+        self.has_tail_policy = has_tail_policy
+        self.fd = fd
+        # Store parameter count for the override macro trick
+        self.override_macro_param_new_unmasked_func_name_and_param_cnt = {}
+        self.override_macro_param_new_masked_func_name_and_param_cnt = {}
+        common_include = """
 #if __has_include ("riscv_vector.h")
 #include <riscv_vector.h>
 #endif
@@ -834,27 +833,27 @@ class CompatibleHeaderGenerator(Generator):
 
 """
 
-    non_overloaded_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_POLICY_H
+        non_overloaded_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_POLICY_H
 #define __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_POLICY_H
 
 """
 
-    non_overloaded_non_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_NON_POLICY_H
+        non_overloaded_non_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_NON_POLICY_H
 #define __RVV_0P10_COMPATIBLE_HEADERS_NON_OVERLOADED_NON_POLICY_H
 
 """
 
-    overloaded_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_POLICY_H
+        overloaded_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_POLICY_H
 #define __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_POLICY_H
 
 """
 
-    overloaded_non_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_NON_POLICY_H
+        overloaded_non_policy_header_start = """#ifndef __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_NON_POLICY_H
 #define __RVV_0P10_COMPATIBLE_HEADERS_OVERLOADED_NON_POLICY_H
 
 """
 
-    override_macro_utility = """
+        override_macro_utility = """
 // The maximum number of parameters is 20, this is held by segment load
 // instructions with a NFIELD (NF) of 8. 20 is contributed by 8 vector register
 // pointers passed, 1 vector mask register, 8 passthrough register for
@@ -864,833 +863,840 @@ _14, _15, _16, _17, _18, _19, _20, NAME, ...) NAME
 
 """
 
-    if has_tail_policy:
-      if self.is_overloaded:
-        self.write(overloaded_policy_header_start)
-      else:
-        self.write(non_overloaded_policy_header_start)
-    else:
-      if self.is_overloaded:
-        self.write(overloaded_non_policy_header_start)
-        self.write(override_macro_utility)
-      else:
-        self.write(non_overloaded_non_policy_header_start)
-    self.write(common_include)
-
-  def write_title(self, text, link):
-    pass
-
-  def gen_prologue(self):
-    if self.is_overloaded:
-      for legacy_func_name, unmasked_new_func_name_and_unmasked_param_cnt_set\
-        in\
-        self.override_macro_param_new_unmasked_func_name_and_param_cnt.items():
-        if self.need_to_swap_param(legacy_func_name):
-          continue
-        unmasked_new_func_name, unmasked_param_cnt_set = \
-          list(unmasked_new_func_name_and_unmasked_param_cnt_set.items())[0]
-
-        assert len(unmasked_param_cnt_set) != 0
-
-        if legacy_func_name in \
-          self.override_macro_param_new_masked_func_name_and_param_cnt:
-          masked_new_func_name, masked_param_cnt_set =\
-            list(
-              self.override_macro_param_new_masked_func_name_and_param_cnt
-                [legacy_func_name].items())[0]
+        if has_tail_policy:
+            if self.is_overloaded:
+                self.write(overloaded_policy_header_start)
+            else:
+                self.write(non_overloaded_policy_header_start)
         else:
-          masked_param_cnt_set = {}
+            if self.is_overloaded:
+                self.write(overloaded_non_policy_header_start)
+                self.write(override_macro_utility)
+            else:
+                self.write(non_overloaded_non_policy_header_start)
+        self.write(common_include)
 
-        if len(unmasked_param_cnt_set) + len(masked_param_cnt_set) == 1:
-          self.write(f"#define {legacy_func_name}(...) ")
-          self.write(f"{unmasked_new_func_name}(__VA_ARGS__)\n")
-          continue
-        self.write(f"#define {legacy_func_name}(...) _GET_OVERRIDE(__VA_ARGS__")
-        for i in range(20, 0, -1):
-          self.write(", ")
-          if i in unmasked_param_cnt_set:
-            self.write(f"{unmasked_new_func_name}")
-          elif i in masked_param_cnt_set:
-            self.write(f"{masked_new_func_name}")
-          else:
-            self.write(f"{i}")
-        self.write(")(__VA_ARGS__)\n")
+    def write_title(self, text, link):
+        pass
 
-      for legacy_func_name, masked_new_func_name_and_masked_param_cnt_set in\
-          self.override_macro_param_new_masked_func_name_and_param_cnt.items():
-        masked_new_func_name, masked_param_cnt_set = \
-          list(masked_new_func_name_and_masked_param_cnt_set.items())[0]
-        if self.need_to_swap_param(legacy_func_name):
-          continue
-        if legacy_func_name in\
-          self.override_macro_param_new_unmasked_func_name_and_param_cnt:
-          continue
-        if len(masked_param_cnt_set) != 1:
-          assert False
-        self.write(f"#define {legacy_func_name}(...) ")
-        self.write(f"{masked_new_func_name}(__VA_ARGS__)\n")
+    def gen_prologue(self):
+        if self.is_overloaded:
+            for legacy_func_name, unmasked_new_func_name_and_unmasked_param_cnt_set \
+                    in \
+                    self.override_macro_param_new_unmasked_func_name_and_param_cnt.items():
+                if self.need_to_swap_param(legacy_func_name):
+                    continue
+                unmasked_new_func_name, unmasked_param_cnt_set = \
+                    list(unmasked_new_func_name_and_unmasked_param_cnt_set.items())[0]
 
-    self.write("#endif\n")
+                assert len(unmasked_param_cnt_set) != 0
 
-  def write(self, text):
-    self.fd.write(text)
+                if legacy_func_name in \
+                        self.override_macro_param_new_masked_func_name_and_param_cnt:
+                    masked_new_func_name, masked_param_cnt_set = \
+                        list(
+                            self.override_macro_param_new_masked_func_name_and_param_cnt
+                            [legacy_func_name].items())[0]
+                else:
+                    masked_param_cnt_set = {}
 
-  def start_group(self, group_name):
-    pass
+                if len(unmasked_param_cnt_set) + len(masked_param_cnt_set) == 1:
+                    self.write(f"#define {legacy_func_name}(...) ")
+                    self.write(f"{unmasked_new_func_name}(__VA_ARGS__)\n")
+                    continue
+                self.write(f"#define {legacy_func_name}(...) _GET_OVERRIDE(__VA_ARGS__")
+                for i in range(20, 0, -1):
+                    self.write(", ")
+                    if i in unmasked_param_cnt_set:
+                        self.write(f"{unmasked_new_func_name}")
+                    elif i in masked_param_cnt_set:
+                        self.write(f"{masked_new_func_name}")
+                    else:
+                        self.write(f"{i}")
+                self.write(")(__VA_ARGS__)\n")
 
-  def inst_group_prologue(self):
-    return ""
+            for legacy_func_name, masked_new_func_name_and_masked_param_cnt_set in \
+                    self.override_macro_param_new_masked_func_name_and_param_cnt.items():
+                masked_new_func_name, masked_param_cnt_set = \
+                    list(masked_new_func_name_and_masked_param_cnt_set.items())[0]
+                if self.need_to_swap_param(legacy_func_name):
+                    continue
+                if legacy_func_name in \
+                        self.override_macro_param_new_unmasked_func_name_and_param_cnt:
+                    continue
+                if len(masked_param_cnt_set) != 1:
+                    assert False
+                self.write(f"#define {legacy_func_name}(...) ")
+                self.write(f"{masked_new_func_name}(__VA_ARGS__)\n")
 
-  def inst_group_epilogue(self):
-    return ""
+        self.write("#endif\n")
 
-  def function_group(self,
-                     template,
-                     title,
-                     link,
-                     op_list,
-                     type_list,
-                     sew_list,
-                     lmul_list,
-                     decorator_list,
-                     description=None,
-                     required_ext_list=None):
-    if self.has_tail_policy and len(decorator_list) == 0:
-      return
-    super().function_group(
-        template,
-        title,
-        link,
-        op_list,
-        type_list,
-        sew_list,
-        lmul_list,
-        decorator_list,
-        description=description,
-        required_ext_list=required_ext_list)
+    def write(self, text):
+        self.fd.write(text)
 
-  @staticmethod
-  def is_policy_func(inst_info):
-    """
+    def start_group(self, group_name):
+        pass
+
+    def inst_group_prologue(self):
+        return ""
+
+    def inst_group_epilogue(self):
+        return ""
+
+    def function_group(self,
+                       template,
+                       title,
+                       link,
+                       op_list,
+                       type_list,
+                       sew_list,
+                       lmul_list,
+                       decorator_list,
+                       description=None,
+                       required_ext_list=None):
+        if self.has_tail_policy and len(decorator_list) == 0:
+            return
+        super().function_group(
+            template,
+            title,
+            link,
+            op_list,
+            type_list,
+            sew_list,
+            lmul_list,
+            decorator_list,
+            description=description,
+            required_ext_list=required_ext_list)
+
+    @staticmethod
+    def is_policy_func(inst_info):
+        """
     Determine whether the instruction information contains policy attributes.
     """
-    return (inst_info.extra_attr & ExtraAttr.IS_TA) | \
-    (inst_info.extra_attr & ExtraAttr.IS_TU) | \
-    (inst_info.extra_attr & ExtraAttr.IS_MA) | \
-    (inst_info.extra_attr & ExtraAttr.IS_MU) | \
-    (inst_info.extra_attr & ExtraAttr.IS_TAMA) | \
-    (inst_info.extra_attr & ExtraAttr.IS_TAMU) | \
-    (inst_info.extra_attr & ExtraAttr.IS_TUMA) | \
-    (inst_info.extra_attr & ExtraAttr.IS_TUMU) | \
-    (inst_info.extra_attr & ExtraAttr.IS_RED_TUMA) | \
-    (inst_info.extra_attr & ExtraAttr.IS_RED_TAMA)
+        return (inst_info.extra_attr & ExtraAttr.IS_TA) | \
+            (inst_info.extra_attr & ExtraAttr.IS_TU) | \
+            (inst_info.extra_attr & ExtraAttr.IS_MA) | \
+            (inst_info.extra_attr & ExtraAttr.IS_MU) | \
+            (inst_info.extra_attr & ExtraAttr.IS_TAMA) | \
+            (inst_info.extra_attr & ExtraAttr.IS_TAMU) | \
+            (inst_info.extra_attr & ExtraAttr.IS_TUMA) | \
+            (inst_info.extra_attr & ExtraAttr.IS_TUMU) | \
+            (inst_info.extra_attr & ExtraAttr.IS_RED_TUMA) | \
+            (inst_info.extra_attr & ExtraAttr.IS_RED_TAMA)
 
-  @staticmethod
-  def is_no_mu_inst(name):
-    no_mu_inst_list = ["vcpop", "vfirst", "red"]
-    for default_tu_inst in no_mu_inst_list:
-      if default_tu_inst in name:
-        return True
-    return False
+    @staticmethod
+    def is_no_mu_inst(name):
+        no_mu_inst_list = ["vcpop", "vfirst", "red"]
+        for default_tu_inst in no_mu_inst_list:
+            if default_tu_inst in name:
+                return True
+        return False
 
-  @staticmethod
-  def is_always_ta_inst(name):
-    always_ta_inst_list = [
-        # mask unit-stride load/store instructions
-        "vlm",
-        "vsm",
-        # add-with-carry/subtract-with-borrow
-        "vadc",
-        "vadc",
-        "vmadc",
-        "vsbc",
-        "vmsbc",
-        # comparison instructions
-        "vmseq",
-        "vmsne",
-        "vmsltu",
-        "vmslt",
-        "vmsleu",
-        "vmsle",
-        "vmsgtu",
-        "vmsgt",
-        "vmsgeu",
-        "vmsge",
-        "vmfeq",
-        "vmfne",
-        "vmflt",
-        "vmfle",
-        "vmfgt",
-        "vmfge",
-        # mask-register logical instructions
-        "vmand",
-        "vmnand",
-        "vmandn",
-        "vmxor",
-        "vmor",
-        "vmnor",
-        "vmorn",
-        "vmxnor",
-        # other
-        "vmsbf",
-        "vmsif",
-        "vmsof",
-        "vfirst",
-        "vcpop"
-    ]
-    for always_ta_inst in always_ta_inst_list:
-      if always_ta_inst in name:
-        return True
-    return False
+    @staticmethod
+    def is_always_ta_inst(name):
+        always_ta_inst_list = [
+            # mask unit-stride load/store instructions
+            "vlm",
+            "vsm",
+            # add-with-carry/subtract-with-borrow
+            "vadc",
+            "vadc",
+            "vmadc",
+            "vsbc",
+            "vmsbc",
+            # comparison instructions
+            "vmseq",
+            "vmsne",
+            "vmsltu",
+            "vmslt",
+            "vmsleu",
+            "vmsle",
+            "vmsgtu",
+            "vmsgt",
+            "vmsgeu",
+            "vmsge",
+            "vmfeq",
+            "vmfne",
+            "vmflt",
+            "vmfle",
+            "vmfgt",
+            "vmfge",
+            # mask-register logical instructions
+            "vmand",
+            "vmnand",
+            "vmandn",
+            "vmxor",
+            "vmor",
+            "vmnor",
+            "vmorn",
+            "vmxnor",
+            # other
+            "vmsbf",
+            "vmsif",
+            "vmsof",
+            "vfirst",
+            "vcpop"
+        ]
+        for always_ta_inst in always_ta_inst_list:
+            if always_ta_inst in name:
+                return True
+        return False
 
-  @staticmethod
-  def get_legacy_suffix(inst_info):
-    """
+    @staticmethod
+    def get_legacy_suffix(inst_info):
+        """
     Gets legacy suffix for instruction based on name and instruction
     information.
     """
-    suffix = ""
-    if CompatibleHeaderGenerator.is_policy_func(
-        inst_info):  # policy intrinsics go here
-      if inst_info.extra_attr & ExtraAttr.IS_TA:
-        suffix = "_ta"
-      if inst_info.extra_attr & ExtraAttr.IS_TU:
-        suffix = "_tu"
-      if inst_info.extra_attr & ExtraAttr.IS_MA:
-        suffix = "_ma"
-      if inst_info.extra_attr & ExtraAttr.IS_MU:
-        suffix = "_mu"
-      if inst_info.extra_attr & ExtraAttr.IS_TAMA:
-        suffix = "_tama"
-      if inst_info.extra_attr & ExtraAttr.IS_TAMU:
-        suffix = "_tamu"
-      if inst_info.extra_attr & ExtraAttr.IS_TUMA:
-        suffix = "_tuma"
-      if inst_info.extra_attr & ExtraAttr.IS_TUMU:
-        suffix = "_tumu"
-      if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-        inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
-        suffix = "_tum"
-      if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-        inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
-        suffix = "_tam"
-    else:  # non-policy intrinsics go here
-      assert False, "To be implemented"
-    return suffix
+        suffix = ""
+        if CompatibleHeaderGenerator.is_policy_func(
+                inst_info):  # policy intrinsics go here
+            if inst_info.extra_attr & ExtraAttr.IS_TA:
+                suffix = "_ta"
+            if inst_info.extra_attr & ExtraAttr.IS_TU:
+                suffix = "_tu"
+            if inst_info.extra_attr & ExtraAttr.IS_MA:
+                suffix = "_ma"
+            if inst_info.extra_attr & ExtraAttr.IS_MU:
+                suffix = "_mu"
+            if inst_info.extra_attr & ExtraAttr.IS_TAMA:
+                suffix = "_tama"
+            if inst_info.extra_attr & ExtraAttr.IS_TAMU:
+                suffix = "_tamu"
+            if inst_info.extra_attr & ExtraAttr.IS_TUMA:
+                suffix = "_tuma"
+            if inst_info.extra_attr & ExtraAttr.IS_TUMU:
+                suffix = "_tumu"
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
+                suffix = "_tum"
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
+                suffix = "_tam"
+        else:  # non-policy intrinsics go here
+            assert False, "To be implemented"
+        return suffix
 
-  @staticmethod
-  def get_new_suffix(name, inst_info):
-    """
+    @staticmethod
+    def get_new_suffix(name, inst_info):
+        """
     Gets new suffix for instruction based on name and instruction information.
     """
 
-    suffix = ""
-    # policy intrinsics go here
-    if CompatibleHeaderGenerator.is_policy_func(inst_info):
-      if inst_info.extra_attr & ExtraAttr.IS_TA:
         suffix = ""
-      if inst_info.extra_attr & ExtraAttr.IS_TU:
-        suffix = "_tu"
-      if inst_info.extra_attr & ExtraAttr.IS_MA:
-        suffix = "_m"
-      if inst_info.extra_attr & ExtraAttr.IS_MU:
-        suffix = "_mu"
-      if inst_info.extra_attr & ExtraAttr.IS_TAMA:
-        suffix = "_m"
-      if inst_info.extra_attr & ExtraAttr.IS_TAMU:
-        suffix = "_mu"
-      if inst_info.extra_attr & ExtraAttr.IS_TUMA:
-        suffix = "_tum"
-      if inst_info.extra_attr & ExtraAttr.IS_TUMU:
-        suffix = "_tumu"
-      if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-        inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
-        suffix = "_tum"
-      if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-        inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
-        suffix = "_m"
+        # policy intrinsics go here
+        if CompatibleHeaderGenerator.is_policy_func(inst_info):
+            if inst_info.extra_attr & ExtraAttr.IS_TA:
+                suffix = ""
+            if inst_info.extra_attr & ExtraAttr.IS_TU:
+                suffix = "_tu"
+            if inst_info.extra_attr & ExtraAttr.IS_MA:
+                suffix = "_m"
+            if inst_info.extra_attr & ExtraAttr.IS_MU:
+                suffix = "_mu"
+            if inst_info.extra_attr & ExtraAttr.IS_TAMA:
+                suffix = "_m"
+            if inst_info.extra_attr & ExtraAttr.IS_TAMU:
+                suffix = "_mu"
+            if inst_info.extra_attr & ExtraAttr.IS_TUMA:
+                suffix = "_tum"
+            if inst_info.extra_attr & ExtraAttr.IS_TUMU:
+                suffix = "_tumu"
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
+                suffix = "_tum"
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
+                suffix = "_m"
 
-    else:  # non-policy intrinsics go here
-      if inst_info.store_p():
-        if inst_info.extra_attr & ExtraAttr.IS_MASK:
-          suffix = "_m"
-        else:
-          suffix = ""
-      elif inst_info.extra_attr & ExtraAttr.IS_MASK:
-        if CompatibleHeaderGenerator.is_no_mu_inst(name):
-          if CompatibleHeaderGenerator.is_always_ta_inst(name):
-            suffix = "_m"
-          else:
-            suffix = "_tum"
-        else:
-          if CompatibleHeaderGenerator.is_always_ta_inst(name):
-            suffix = "_mu"
-          else:
-            suffix = "_tumu"
+        else:  # non-policy intrinsics go here
+            if inst_info.store_p():
+                if inst_info.extra_attr & ExtraAttr.IS_MASK:
+                    suffix = "_m"
+                else:
+                    suffix = ""
+            elif inst_info.extra_attr & ExtraAttr.IS_MASK:
+                if CompatibleHeaderGenerator.is_no_mu_inst(name):
+                    if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                        suffix = "_m"
+                    else:
+                        suffix = "_tum"
+                else:
+                    if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                        suffix = "_mu"
+                    else:
+                        suffix = "_tumu"
 
-    return suffix
+        return suffix
 
-  @staticmethod
-  def get_new_func_name(name, inst_info):
-    """
+    @staticmethod
+    def get_new_func_name(name, inst_info):
+        """
     Gets new (v0.11 or higher) function name from a v0.10 name.
 
     Strips the mask suffix (_m) or policy suffix from the v0.10 name (if exist)
     and replace it with the corresponding suffix in v0.11 (if needed).
     """
 
-    def is_originally_default_tu_inst(name):
-      default_tu_inst_list = [
-          # multiply-add instructions
-          "vfmacc",
-          "vfmadd",
-          "vfmsac",
-          "vfmsub",
-          "vfnmacc",
-          "vfnmadd",
-          "vfnmsac",
-          "vfnmsub",
-          "vfwmacc",
-          "vfwnmacc",
-          "vfwmsac",
-          "vfwnmsac",
-          "vmacc",
-          "vmadd",
-          "vnmsac",
-          "vnmsub",
-          "vwmacc",
-          "vwmaccsu",
-          "vwnaccu",
-          "vwmaccus",
-          # reduction instructions
-          "red",
-          # others
-          "vslideup",
-          "vslidedown",
-          "vcompress",
-          "vmv_s",
-          "vfmv_s",
-      ]
-      for default_tu_inst in default_tu_inst_list:
-        if default_tu_inst in name:
-          return True
-      return False
+        def is_originally_default_tu_inst(name):
+            default_tu_inst_list = [
+                # multiply-add instructions
+                "vfmacc",
+                "vfmadd",
+                "vfmsac",
+                "vfmsub",
+                "vfnmacc",
+                "vfnmadd",
+                "vfnmsac",
+                "vfnmsub",
+                "vfwmacc",
+                "vfwnmacc",
+                "vfwmsac",
+                "vfwnmsac",
+                "vmacc",
+                "vmadd",
+                "vnmsac",
+                "vnmsub",
+                "vwmacc",
+                "vwmaccsu",
+                "vwnaccu",
+                "vwmaccus",
+                # reduction instructions
+                "red",
+                # others
+                "vslideup",
+                "vslidedown",
+                "vcompress",
+                "vmv_s",
+                "vfmv_s",
+            ]
+            for default_tu_inst in default_tu_inst_list:
+                if default_tu_inst in name:
+                    return True
+            return False
 
-    def is_mask_or_policy_suffix(name):
-      """
+        def is_mask_or_policy_suffix(name):
+            """
       This function checks if the function name has a suffix that needs to be
       stripped because we will need to replace them with the new ones in v0.11
       with `get_new_suffix`.
       """
-      mask_or_policy_suffix = [
-          "m", "tu", "ta", "tu", "tama", "tamu", "tuma", "tumu", "tam", "tum",
-          "ma", "mu"
-      ]
-      return name.split("_")[-1] in mask_or_policy_suffix
+            mask_or_policy_suffix = [
+                "m", "tu", "ta", "tu", "tama", "tamu", "tuma", "tumu", "tam", "tum",
+                "ma", "mu"
+            ]
+            return name.split("_")[-1] in mask_or_policy_suffix
 
-    if is_mask_or_policy_suffix(name):
-      name = "_".join(name.split("_")[:-1])
+        if is_mask_or_policy_suffix(name):
+            name = "_".join(name.split("_")[:-1])
 
-    if is_originally_default_tu_inst(
-        name) and not CompatibleHeaderGenerator.is_policy_func(inst_info):
-      if inst_info.extra_attr & ExtraAttr.IS_MASK:
-        if CompatibleHeaderGenerator.is_no_mu_inst(name):
-          if CompatibleHeaderGenerator.is_always_ta_inst(name):
-            assert False, "Unreachable"
-          return "__riscv_" + name + "_tum"
-        else:
-          if CompatibleHeaderGenerator.is_always_ta_inst(name):
-            assert False, "Unreachable"
-          return "__riscv_" + name + "_tumu"
-      else:
-        return "__riscv_" + name + "_tu"
+        if is_originally_default_tu_inst(
+                name) and not CompatibleHeaderGenerator.is_policy_func(inst_info):
+            if inst_info.extra_attr & ExtraAttr.IS_MASK:
+                if CompatibleHeaderGenerator.is_no_mu_inst(name):
+                    if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                        assert False, "Unreachable"
+                    return "__riscv_" + name + "_tum"
+                else:
+                    if CompatibleHeaderGenerator.is_always_ta_inst(name):
+                        assert False, "Unreachable"
+                    return "__riscv_" + name + "_tumu"
+            else:
+                return "__riscv_" + name + "_tu"
 
-    return "__riscv_" + name + CompatibleHeaderGenerator.get_new_suffix(
-        name, inst_info)
+        return "__riscv_" + name + CompatibleHeaderGenerator.get_new_suffix(
+            name, inst_info)
 
-  def need_to_swap_param(self, name):
-    """
+    def need_to_swap_param(self, name):
+        """
     Please see explanation under write_param_swap_compatible_definition.
     """
-    return "vcompress" in name or "vmerge" in name or "vfmerge" in name
+        return "vcompress" in name or "vmerge" in name or "vfmerge" in name
 
-  def write_param_swap_compatible_definition(self, legacy_func_name,
-                                             new_func_name, inst_info):
-    """
+    def write_param_swap_compatible_definition(self, legacy_func_name,
+                                               new_func_name, inst_info):
+        """
     From v0.10 to v0.11, the operand order of vcompress and vmerge intrinsics
     were adjusted so all intrinsics with mnemonics of vvm and vxm are aligned.
     Please see riscv-non-isa/rvv-intrinsic-doc #185 for more detail.
     """
-    if "vcompress" in legacy_func_name:
-      if inst_info.extra_attr & ExtraAttr.IS_TA:
-        self.write(f"#define {legacy_func_name}(mask, src, vl) "
-                   f"{new_func_name}((src), (mask), (vl))\n")
-      else:  #TU
-        # The non-policy vcompress intrinsics comes here too because in v0.10
-        # non-policy vcompress has policy behavior of tail undisturbed.
-        self.write(f"#define {legacy_func_name}(mask, dest, src, vl) "
-                   f"{new_func_name}((dest), (src), (mask), (vl))\n")
-      return
-    if "vmerge" in legacy_func_name or "vfmerge" in legacy_func_name:
-      if inst_info.extra_attr & ExtraAttr.IS_TU:
-        self.write(
-            f"#define {legacy_func_name}(mask, maskedoff, op1, op2, vl) "
-            f"{new_func_name}((maskedoff), (op1), (op2), (mask), (vl))\n")
-      else:  #TA
-        # The non-policy vmerge/vfmerge intrinsics comes here too because in
-        # v0.10 non-policy vcompress has policy behavior of tail agnostic.
-        self.write(f"#define {legacy_func_name}(mask, op1, op2, vl) "
-                   f"{new_func_name}((op1), (op2), (mask), (vl))\n")
-      return
+        if "vcompress" in legacy_func_name:
+            if inst_info.extra_attr & ExtraAttr.IS_TA:
+                self.write(f"#define {legacy_func_name}(mask, src, vl) "
+                           f"{new_func_name}((src), (mask), (vl))\n")
+            else:  #TU
+                # The non-policy vcompress intrinsics comes here too because in v0.10
+                # non-policy vcompress has policy behavior of tail undisturbed.
+                self.write(f"#define {legacy_func_name}(mask, dest, src, vl) "
+                           f"{new_func_name}((dest), (src), (mask), (vl))\n")
+            return
+        if "vmerge" in legacy_func_name or "vfmerge" in legacy_func_name:
+            if inst_info.extra_attr & ExtraAttr.IS_TU:
+                self.write(
+                    f"#define {legacy_func_name}(mask, maskedoff, op1, op2, vl) "
+                    f"{new_func_name}((maskedoff), (op1), (op2), (mask), (vl))\n")
+            else:  #TA
+                # The non-policy vmerge/vfmerge intrinsics comes here too because in
+                # v0.10 non-policy vcompress has policy behavior of tail agnostic.
+                self.write(f"#define {legacy_func_name}(mask, op1, op2, vl) "
+                           f"{new_func_name}((op1), (op2), (mask), (vl))\n")
+            return
 
-    assert False, "Unreachable"
+        assert False, "Unreachable"
 
-  def func(self, inst_info, name, return_type, **kwargs):
-    if self.is_overloaded and not Generator.is_support_overloaded(
-        name, **kwargs) and "vfmv_s" not in name and "vmv_s" not in name and\
-        not (inst_info.extra_attr & ExtraAttr.IS_MASK and\
-         ("viota" in name or "vid" in name)):
-      # In v0.10, overloaded version of vid, vmv_s_x, and vfmv_s_f is
-      # feasible because they have a default policy assumption of tail
-      # undisturbed.
-      # For masked versions of v0.10 vid, viota, the overloaded version is
-      # possible.
-      # In v0.11, the general assumption of policy is agnostic so they
-      # don't have an overloaded version. Generator.is_support_overloaded
-      # will return False for them so we prevent this by extra checking
-      # the name here.
-      return
+    def func(self, inst_info, name, return_type, **kwargs):
+        if self.is_overloaded and not Generator.is_support_overloaded(
+                name, **kwargs) and "vfmv_s" not in name and "vmv_s" not in name and \
+                not (inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                     ("viota" in name or "vid" in name)):
+            # In v0.10, overloaded version of vid, vmv_s_x, and vfmv_s_f is
+            # feasible because they have a default policy assumption of tail
+            # undisturbed.
+            # For masked versions of v0.10 vid, viota, the overloaded version is
+            # possible.
+            # In v0.11, the general assumption of policy is agnostic so they
+            # don't have an overloaded version. Generator.is_support_overloaded
+            # will return False for them so we prevent this by extra checking
+            # the name here.
+            return
 
-    if self.is_overloaded:
-      legacy_func_name = Generator.get_overloaded_op_name(name)[8:]
+        if self.is_overloaded:
+            legacy_func_name = Generator.get_overloaded_op_name(name)[8:]
 
-      if not CompatibleHeaderGenerator.is_policy_func(inst_info):
-        # For legacy non-policy overloaded intrinsics, we need the override
-        # technique to map the same legacy overloaded name to its corresponding
-        # v0.11 name.
-        # For example:
-        # vadd (op1, op2, vl) --> __riscv_vadd
-        # vadd(maskedoff, mask, op1, op2, vl) --> __riscv_vadd_tumu
-        if inst_info.extra_attr & ExtraAttr.IS_MASK and\
-          legacy_func_name in\
-            self.override_macro_param_new_masked_func_name_and_param_cnt:
-          return
-        elif not inst_info.extra_attr & ExtraAttr.IS_MASK and\
-          legacy_func_name in\
-            self.override_macro_param_new_unmasked_func_name_and_param_cnt:
-          return
+            if not CompatibleHeaderGenerator.is_policy_func(inst_info):
+                # For legacy non-policy overloaded intrinsics, we need the override
+                # technique to map the same legacy overloaded name to its corresponding
+                # v0.11 name.
+                # For example:
+                # vadd (op1, op2, vl) --> __riscv_vadd
+                # vadd(maskedoff, mask, op1, op2, vl) --> __riscv_vadd_tumu
+                if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                        legacy_func_name in \
+                        self.override_macro_param_new_masked_func_name_and_param_cnt:
+                    return
+                elif not inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                        legacy_func_name in \
+                        self.override_macro_param_new_unmasked_func_name_and_param_cnt:
+                    return
 
-        if inst_info.extra_attr & ExtraAttr.IS_MASK and\
-           legacy_func_name not in\
-            self.override_macro_param_new_masked_func_name_and_param_cnt:
-          self.override_macro_param_new_masked_func_name_and_param_cnt[
-              legacy_func_name] = {}
-        if not inst_info.extra_attr & ExtraAttr.IS_MASK and\
-           legacy_func_name not in\
-            self.override_macro_param_new_unmasked_func_name_and_param_cnt:
-          self.override_macro_param_new_unmasked_func_name_and_param_cnt[
-              legacy_func_name] = {}
-        self.generated_functions_set.add(legacy_func_name)
-      else:
-        if legacy_func_name in self.generated_functions_set:
-          return
-        self.generated_functions_set.add(legacy_func_name)
+                if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                        legacy_func_name not in \
+                        self.override_macro_param_new_masked_func_name_and_param_cnt:
+                    self.override_macro_param_new_masked_func_name_and_param_cnt[
+                        legacy_func_name] = {}
+                if not inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                        legacy_func_name not in \
+                        self.override_macro_param_new_unmasked_func_name_and_param_cnt:
+                    self.override_macro_param_new_unmasked_func_name_and_param_cnt[
+                        legacy_func_name] = {}
+                self.generated_functions_set.add(legacy_func_name)
+            else:
+                if legacy_func_name in self.generated_functions_set:
+                    return
+                self.generated_functions_set.add(legacy_func_name)
 
-      if CompatibleHeaderGenerator.is_policy_func(inst_info):
-        # Strip trailing suffix
-        legacy_func_name = "_".join(legacy_func_name.split("_")[:-1])
+            if CompatibleHeaderGenerator.is_policy_func(inst_info):
+                # Strip trailing suffix
+                legacy_func_name = "_".join(legacy_func_name.split("_")[:-1])
 
-        legacy_suffix = CompatibleHeaderGenerator.get_legacy_suffix(inst_info)
-        new_suffix = CompatibleHeaderGenerator.get_new_suffix(name, inst_info)
-        if new_suffix == "_m":
-          # Overloaded version intrinsics don't need the `_m` suffix.
-          new_suffix = ""
+                legacy_suffix = CompatibleHeaderGenerator.get_legacy_suffix(inst_info)
+                new_suffix = CompatibleHeaderGenerator.get_new_suffix(name, inst_info)
+                if new_suffix == "_m":
+                    # Overloaded version intrinsics don't need the `_m` suffix.
+                    new_suffix = ""
 
-        new_func_name = "__riscv_" + legacy_func_name + new_suffix
-        legacy_func_name = legacy_func_name + legacy_suffix
+                new_func_name = "__riscv_" + legacy_func_name + new_suffix
+                legacy_func_name = legacy_func_name + legacy_suffix
 
-        if self.need_to_swap_param(legacy_func_name):
-          self.write_param_swap_compatible_definition(legacy_func_name,
-                                                      new_func_name, inst_info)
-          return
-        self.write(f"#define {legacy_func_name}(...) ")
-        self.write(f"{new_func_name}(__VA_ARGS__)\n")
-      else:
-        new_func_name = CompatibleHeaderGenerator.get_new_func_name(
-            legacy_func_name, inst_info)
+                if self.need_to_swap_param(legacy_func_name):
+                    self.write_param_swap_compatible_definition(legacy_func_name,
+                                                                new_func_name, inst_info)
+                    return
+                self.write(f"#define {legacy_func_name}(...) ")
+                self.write(f"{new_func_name}(__VA_ARGS__)\n")
+            else:
+                new_func_name = CompatibleHeaderGenerator.get_new_func_name(
+                    legacy_func_name, inst_info)
 
-        if self.need_to_swap_param(legacy_func_name):
-          self.write_param_swap_compatible_definition(legacy_func_name,
-                                                      new_func_name, inst_info)
-          return
+                if self.need_to_swap_param(legacy_func_name):
+                    self.write_param_swap_compatible_definition(legacy_func_name,
+                                                                new_func_name, inst_info)
+                    return
 
-        if new_func_name[-2:] == "_m":
-          # Overloaded version intrinsics don't need the `_m` suffix.
-          new_func_name = new_func_name[:-2]
+                if new_func_name[-2:] == "_m":
+                    # Overloaded version intrinsics don't need the `_m` suffix.
+                    new_func_name = new_func_name[:-2]
 
-        if inst_info.extra_attr & ExtraAttr.IS_MASK:
-          if new_func_name not in\
-            self.override_macro_param_new_masked_func_name_and_param_cnt[
-              legacy_func_name]:
-            self.override_macro_param_new_masked_func_name_and_param_cnt[
-                legacy_func_name][new_func_name] = set([len(kwargs)])
-          else:
-            self.override_macro_param_new_masked_func_name_and_param_cnt[
-                legacy_func_name][new_func_name].add(len(kwargs))
+                if inst_info.extra_attr & ExtraAttr.IS_MASK:
+                    if new_func_name not in \
+                            self.override_macro_param_new_masked_func_name_and_param_cnt[
+                                legacy_func_name]:
+                        self.override_macro_param_new_masked_func_name_and_param_cnt[
+                            legacy_func_name][new_func_name] = set([len(kwargs)])
+                    else:
+                        self.override_macro_param_new_masked_func_name_and_param_cnt[
+                            legacy_func_name][new_func_name].add(len(kwargs))
+                else:
+                    if new_func_name not in \
+                            self.override_macro_param_new_unmasked_func_name_and_param_cnt[
+                                legacy_func_name]:
+                        self.override_macro_param_new_unmasked_func_name_and_param_cnt[
+                            legacy_func_name][new_func_name] = set([len(kwargs)])
+                    else:
+                        self.override_macro_param_new_unmasked_func_name_and_param_cnt[
+                            legacy_func_name][new_func_name].add(len(kwargs))
         else:
-          if new_func_name not in\
-            self.override_macro_param_new_unmasked_func_name_and_param_cnt[
-              legacy_func_name]:
-            self.override_macro_param_new_unmasked_func_name_and_param_cnt[
-                legacy_func_name][new_func_name] = set([len(kwargs)])
-          else:
-            self.override_macro_param_new_unmasked_func_name_and_param_cnt[
-                legacy_func_name][new_func_name].add(len(kwargs))
-    else:
-      self.generated_functions_set.add(name)
-      legacy_func_name = Generator.func_name(name)[8:]
-      new_func_name = CompatibleHeaderGenerator.get_new_func_name(
-          legacy_func_name, inst_info)
+            self.generated_functions_set.add(name)
+            legacy_func_name = Generator.func_name(name)[8:]
+            new_func_name = CompatibleHeaderGenerator.get_new_func_name(
+                legacy_func_name, inst_info)
 
-      if self.need_to_swap_param(legacy_func_name):
-        self.write_param_swap_compatible_definition(legacy_func_name,
-                                                    new_func_name, inst_info)
-        return
+            if self.need_to_swap_param(legacy_func_name):
+                self.write_param_swap_compatible_definition(legacy_func_name,
+                                                            new_func_name, inst_info)
+                return
 
-      self.write(f"#define {legacy_func_name}(...) ")
-      self.write(f"{new_func_name}(__VA_ARGS__)\n")
+            self.write(f"#define {legacy_func_name}(...) ")
+            self.write(f"{new_func_name}(__VA_ARGS__)\n")
+
 
 def base_type_to_rif_base_type(typename):
-  rif_basetype_lut = {
-      "int": "Int",
-      "uint": "UInt",
-      "float": "Float",
-      "_Float": "Float",
-      "bfloat": "Bfloat"
-  }
+    rif_basetype_lut = {
+        "int": "Int",
+        "uint": "UInt",
+        "float": "Float",
+        "_Float": "Float",
+        "bfloat": "Bfloat"
+    }
 
-  return rif_basetype_lut[typename]
+    return rif_basetype_lut[typename]
+
 
 def is_tuple_type(typename):
-  return "x" in typename
+    return "x" in typename
+
 
 def parse_rif_vector_type(typename, is_always_lmul1):
-  vtype = re.compile(
-      r"v(int|uint|float|bfloat)(8|16|32|64)m(f8|f4|f2|1|2|4|8)x?[2-8]?_t")
-  match = vtype.search(typename)
-  if match:
-    # LMUL information is not needed here, it is configurable in RIF.
-    base_type = match.group(1)
-    sew = int(match.group(2))
-    base_type_str = base_type_to_rif_base_type(base_type)
-    # If this type is always LMUL1 and used for reduction operation, then return
-    # scalar type rather than vector type.
-    if is_always_lmul1:
-      return (f"Scalar{base_type_str}{sew}", f"S{base_type_str}{sew}",
-              f"S{base_type_str[0]}")
-    else:
-      return (f"OneD{base_type_str}{sew}", f"V{base_type_str}{sew}",
-              f"V{base_type_str[0]}")
+    vtype = re.compile(
+        r"v(int|uint|float|bfloat)(8|16|32|64)m(f8|f4|f2|1|2|4|8)x?[2-8]?_t")
+    match = vtype.search(typename)
+    if match:
+        # LMUL information is not needed here, it is configurable in RIF.
+        base_type = match.group(1)
+        sew = int(match.group(2))
+        base_type_str = base_type_to_rif_base_type(base_type)
+        # If this type is always LMUL1 and used for reduction operation, then return
+        # scalar type rather than vector type.
+        if is_always_lmul1:
+            return (f"Scalar{base_type_str}{sew}", f"S{base_type_str}{sew}",
+                    f"S{base_type_str[0]}")
+        else:
+            return (f"OneD{base_type_str}{sew}", f"V{base_type_str}{sew}",
+                    f"V{base_type_str[0]}")
 
-  vbool = re.compile(r"vbool(1|2|4|8|16|32|64)_t")
-  match = vbool.search(typename)
-  if match:
-    # MLEN information is not needed here as RIF will derive it there.
-    return ("OneDBool", "VBool", "VB")
+    vbool = re.compile(r"vbool(1|2|4|8|16|32|64)_t")
+    match = vbool.search(typename)
+    if match:
+        # MLEN information is not needed here as RIF will derive it there.
+        return ("OneDBool", "VBool", "VB")
 
-  return None
+    return None
 
 
 def parse_rif_scalar_type(typename):
-  int_type_type = re.compile(r"(int|uint|float|bfloat)(8|16|32|64)_t")
-  match = int_type_type.search(typename)
-  if match:
-    base_type = match.group(1)
-    width = int(match.group(2))
-    base_type_str = base_type_to_rif_base_type(base_type)
-    # TODO: Only handle int with type.
-    return (f"Scalar{base_type_str}{width}", f"S{base_type_str}{width}",
-            f"S{base_type_str[0]}")
+    int_type_type = re.compile(r"(int|uint|float|bfloat)(8|16|32|64)_t")
+    match = int_type_type.search(typename)
+    if match:
+        base_type = match.group(1)
+        width = int(match.group(2))
+        base_type_str = base_type_to_rif_base_type(base_type)
+        # TODO: Only handle int with type.
+        return (f"Scalar{base_type_str}{width}", f"S{base_type_str}{width}",
+                f"S{base_type_str[0]}")
 
-  if "_Float16" in typename:
-    return ("ScalarFloat16", "SFloat", "SF16")
-  if "float" in typename:
-    return ("ScalarFloat32", "SFloat32", "SF32")
-  if "double" in typename:
-    return ("ScalarFloat64", "SFloat64", "SF64")
+    if "_Float16" in typename:
+        return "ScalarFloat16", "SFloat", "SF16"
+    if "float" in typename:
+        return "ScalarFloat32", "SFloat32", "SF32"
+    if "double" in typename:
+        return "ScalarFloat64", "SFloat64", "SF64"
 
-  if typename in ["size_t", "unsigned long"]:
-    return ("ScalarUIntXLen", "SUIntXLen", "SL")
-  if typename in ["unsigned int"]:
-    return ("ScalarUIntStatus", "SUIntStatus", "SS")
-  if typename in ["long", "ptrdiff_t", "const int", "int"]:
-    return ("ScalarIntXLen", "SIntXLen", "SI")
-  if typename == "void":
-    return ("Void", "Void", "VO")
-  if typename == "size_t *":
-    return ("SizePtr", "SizePtr", "SZP")
+    if typename in ["size_t", "unsigned long"]:
+        return "ScalarUIntXLen", "SUIntXLen", "SL"
+    if typename in ["unsigned int"]:
+        return "ScalarUIntStatus", "SUIntStatus", "SS"
+    if typename in ["long", "ptrdiff_t", "const int", "int"]:
+        return "ScalarIntXLen", "SIntXLen", "SI"
+    if typename == "void":
+        return "Void", "Void", "VO"
+    if typename == "size_t *":
+        return "SizePtr", "SizePtr", "SZP"
 
-  return None
+    return None
 
 
 class RIFType:
-  """
+    """
   Class to handle type for RIF.
   """
 
-  def __init__(self, typename, is_always_lmul1=False, is_force_vector=False):
-    v = parse_rif_vector_type(typename, is_always_lmul1)
-    if v is None:
-      v = parse_rif_scalar_type(typename)
-      if v and is_force_vector:
-        v0 = v[0].replace("Scalar", "OneD")
-        v1 = f"V{v[1][1:]}"
-        v2 = f"V{v[2][1:]}"
-        v = (v0, v1, v2)
-    if v is None:
-      raise Exception(f"Unhandled type '{typename}'.")
-    self.rif_type = v[0]
-    self.short_type_name = v[1]
-    self.sig = v[2]
+    def __init__(self, typename, is_always_lmul1=False, is_force_vector=False):
+        v = parse_rif_vector_type(typename, is_always_lmul1)
+        if v is None:
+            v = parse_rif_scalar_type(typename)
+            if v and is_force_vector and v[0] != "ScalarIntXLen":
+                v0 = v[0].replace("Scalar", "OneD")
+                v1 = f"V{v[1][1:]}"
+                v2 = f"V{v[2][1:]}"
+                v = (v0, v1, v2)
+        if v is None:
+            raise Exception(f"Unhandled type '{typename}'.")
+        self.rif_type = v[0]
+        self.short_type_name = v[1]
+        self.sig = v[2]
 
-  def to_type_class(self):
-    ts = self.rif_type
-    if ts.startswith("OneDInt") or ts.startswith("ScalarInt"):
-      return "SIGNED_INT"
-    elif ts.startswith("OneDUInt") or ts.startswith("ScalarUInt"):
-      return "UNSIGNED_INT"
-    elif ts.startswith("OneDBool"):
-      return "BOOL"
-    elif ts.startswith("OneDFloat") or ts.startswith("ScalarFloat"):
-      return "FLOAT"
-    elif ts.startswith("OneDBfloat") or ts.startswith("ScalarBfloat"):
-      return "BFLOAT"
-    elif ts == "Void":
-      return "VOID"
-    else:
-      raise Exception(f"Unhandled: {self.rif_type}")
+    def to_type_class(self):
+        ts = self.rif_type
+        if ts.startswith("OneDInt") or ts.startswith("ScalarInt"):
+            return "SIGNED_INT"
+        elif ts.startswith("OneDUInt") or ts.startswith("ScalarUInt"):
+            return "UNSIGNED_INT"
+        elif ts.startswith("OneDBool"):
+            return "BOOL"
+        elif ts.startswith("OneDFloat") or ts.startswith("ScalarFloat"):
+            return "FLOAT"
+        elif ts.startswith("OneDBfloat") or ts.startswith("ScalarBfloat"):
+            return "BFLOAT"
+        elif ts == "Void":
+            return "VOID"
+        else:
+            raise Exception(f"Unhandled: {self.rif_type}")
 
 
 def rvvtype2sig(typename):
-  riftype = RIFType(typename)
-  return riftype.sig
+    riftype = RIFType(typename)
+    return riftype.sig
 
 
 def first_letter_upper(s):
-  return s[0].upper() + s[1:]
+    return s[0].upper() + s[1:]
 
 
 class RIFGenerator(Generator):
-  """
+    """
   Derived generator for generating 'Operator' definitions in RIF.
   """
 
-  def __init__(self, f, has_tail_policy):
-    super().__init__()
-    self.has_tail_policy = has_tail_policy
-    self.fd = f
-    # self.out = f
-    # self.fd = open(f, "w", encoding="utf-8")
+    def __init__(self, f, has_tail_policy):
+        super().__init__()
+        self.has_tail_policy = has_tail_policy
+        self.fd = f
+        # self.out = f
+        # self.fd = open(f, "w", encoding="utf-8")
 
-  def func(self, inst_info, name, return_type, **kwargs):
-    # LMUL 0 for mask operation
-    if inst_info.LMUL not in [1, 0]:
-      return
+    def func(self, inst_info, name, return_type, **kwargs):
+        # LMUL 0 for mask operation
+        if inst_info.LMUL not in [1, 0]:
+            return
 
-      # TODO: Skip any type with tuple type for now.
-    # if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-    #   return
-    rif_return_type = RIFType(return_type)
-    # Reduction operation using W1/V1 to represnt an type always LMUL=1,
-    # and we translate to S here.
+            # TODO: Skip any type with tuple type for now.
+        # if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+        #   return
+        rif_return_type = RIFType(return_type)
+        # Reduction operation using W1/V1 to represent a type always LMUL=1,
+        # and we translate to S here.
 
-    output_inst_type = inst_info.inst_type.name.replace("W1",
+        output_inst_type = inst_info.inst_type.name.replace("W1",
                                                             "S").replace("V1", "S")
-    def rvvtype2riftype(arg):
-        arg_name = arg[0]
-        arg_type = arg[1]
-        is_always_lmul1 = inst_info.extra_attr & ExtraAttr.REDUCE and (arg_name in ["dest", "scalar"])
-        is_force_vector = inst_info.mem_type == MemType.LOAD
-        riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
-        return riftype.rif_type
-    def rvvtuple2riftype(arg):
-        if type(arg) == tuple:
-          arg_type = arg[1]
-        else:
-          arg_type = arg
-        pattern = re.compile(r".*x(\d+)_t")
-        match_tuple = pattern.search(arg_type)
-        if pattern.match(arg_type):
-          nfield = int(match_tuple.group(1))
-        else:
-          nfield = 1
-        return nfield
 
-    in_args_map = copy.deepcopy(kwargs)
-    inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
-    # Remove `vl` argument.
-    if "vl" in copy.deepcopy(kwargs) or len(in_args_map) == 0:
-      inst_attrs.append("HaveVLParameter")
-    else:
-      inst_attrs.append("NoVLParameter")
-    in_args_map.pop("vl", None)
-    if inst_info.extra_attr & ExtraAttr.REDUCE:
-      # Remove `scalar` and `dest` argument for reduction.
-      in_args_map.pop("scalar", None)
-      in_args_map.pop("dest", None)
-    if inst_info.mem_type == MemType.STORE:
-      in_args_map.pop("base", None)
-    in_args = list(map(rvvtype2riftype, in_args_map.items()))
-    in_args_str = ", ".join(in_args)
-    in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
-    in_args_sig_str = "".join(in_args_sig)
-    if (inst_info.inst_type == InstType.REINT or inst_info.inst_type == InstType.VUNDEF or
-            inst_info.inst_type == InstType.LMUL_EXT or inst_info.inst_type == InstType.LMUL_TRUNC or
-            inst_info.inst_type == InstType.VGET or inst_info.inst_type == InstType.VSET or
-            inst_info.inst_type == InstType.VCREATE or inst_info.inst_type == InstType.SETVL or
-            inst_info.inst_type == InstType.SETVLMAX):
-      inst_attrs.append("Miscellaneous")
-    if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      input_nfields_list = list(map(rvvtuple2riftype, in_args_map.items()))
-      input_nfields = "| ".join(map(str, input_nfields_list))
-      output_nfield = rvvtuple2riftype(return_type)
-    else:
-      output_nfield = 1
-      input_nfields = 1
-    if inst_info.extra_attr & ExtraAttr.INT_EXTENSION :
-        op_id = f"{inst_info.OP[1:]}"
-    elif "Miscellaneous" in inst_attrs:
-        op_id = f"{inst_info.OP}"
-    elif inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-        op_id = f"{inst_info.OP}"
-    elif inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-        op_id = f"{inst_info.OP}"
-    elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
-        op_id = f"{inst_info.OP[1:]}_v"
-    elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
-        print("inst_info.inst_type.name:")
-        print(inst_info.inst_type.name)
-        print("inst_info.OP:")
-        print(inst_info.OP)
-        op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
-        print("op_id")
-        print(op_id)
-        # if inst_attrs in ["NoVLParameter"]:
-        #   op_id
-    elif inst_info.OP == "vid":
-        op_id = "id_v"
-    elif inst_info.extra_attr & ExtraAttr.CONVERT:
-        x = name.split("_")
-        if "rtz" in x or "rod" in x:
-            suffix = "_".join(x[2:5])
-        else:
-            suffix = "_".join(x[1:4])
-        op_id = f"{inst_info.OP[1:]}_{suffix}"
-    else:
-        op_id = f"{inst_info.OP[1:]}_{output_inst_type[1:].lower()}"
-    op_name = inst_info.OP[1:]
-    op_ret_type_class = rif_return_type.to_type_class()
-    n_in_args = len(in_args_map.keys())
-    if input_nfields is not None:
-      input_nf_suffix = "".join(map(str, list(map(rvvtuple2riftype, in_args_map.items()))))
-      op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
-                 f"{inst_info.SEW}"
-                 f"{rif_return_type.short_type_name + in_args_sig_str}"
-                 f"{input_nf_suffix}"
-                 f"{output_nfield}"
-                 )
-    else:
-      op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
-                 f"{inst_info.SEW}"
-                 f"{rif_return_type.short_type_name + in_args_sig_str}")
-    patterns = re.compile(r".*_(tu.*|m.*)")
-    match = patterns.search(name)
-    if inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      inst_attrs.append("SegStoreOperation")
-    if inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-      inst_attrs.append("SegLoadOperation")
-    if match:
-      if op_type[-2:] == "_m":
-        op_type = op_type[:-2]
-      op_type = op_type + "_" + match.group(1)
-    # todo: vlm vsm
-    if op_id != "lm_" and op_id != "sm_" and op_id != "compress_vv" and op_id != "cpop_m" and n_in_args != 0\
-            and op_id != "first_m" and op_id != "mv_x_v":
-      output = (f"CUSTOM_OP_TYPE({op_type}, "
-                f"{op_id}, "
-                f"{inst_info.SEW}, "
-                f"{op_ret_type_class}, "
-                f"{' | '.join(inst_attrs)},"
-                f"{rif_return_type.rif_type}, "
-                f"{n_in_args}, "
-                f"{input_nfields}, "
-                f"{output_nfield}, "
-                f"{in_args_str},)" )
-      self.fd.write(output)
-      self.fd.write("\n")
+        def rvvtype2riftype(arg):
+            arg_name = arg[0]
+            arg_type = arg[1]
+            is_always_lmul1 = inst_info.extra_attr & ExtraAttr.REDUCE and (arg_name in ["dest", "scalar"])
+            is_force_vector = inst_info.mem_type == MemType.LOAD
+            riftype = RIFType(arg_type, is_always_lmul1, is_force_vector)
+            return riftype.rif_type
 
-  def write(self, text):
-      self.fd.write(text)
-  def get_tail_policy_attribute(self, name, inst_info, **kwargs):
-      """
+        def rvvtuple2riftype(arg):
+            if type(arg) == tuple:
+                arg_type = arg[1]
+            else:
+                arg_type = arg
+            pattern = re.compile(r".*x(\d+)_t")
+            match_tuple = pattern.search(arg_type)
+            if pattern.match(arg_type):
+                nfield = int(match_tuple.group(1))
+            else:
+                nfield = 1
+            return nfield
+
+        in_args_map = copy.deepcopy(kwargs)
+        inst_attrs = self.get_tail_policy_attribute(inst_info.OP, inst_info)
+        # Remove `vl` argument.
+        if "vl" in copy.deepcopy(kwargs) or len(in_args_map) == 0:
+            inst_attrs.append("HaveVLParameter")
+        else:
+            inst_attrs.append("NoVLParameter")
+        in_args_map.pop("vl", None)
+        if inst_info.extra_attr & ExtraAttr.REDUCE:
+            # Remove `scalar` and `dest` argument for reduction.
+            in_args_map.pop("scalar", None)
+            in_args_map.pop("dest", None)
+        if inst_info.mem_type == MemType.STORE:
+            in_args_map.pop("base", None)
+        in_args = list(map(rvvtype2riftype, in_args_map.items()))
+        in_args_str = ", ".join(in_args)
+        in_args_sig = list(map(rvvtype2sig, in_args_map.values()))
+        in_args_sig_str = "".join(in_args_sig)
+        if (inst_info.inst_type == InstType.REINT or inst_info.inst_type == InstType.VUNDEF or
+                inst_info.inst_type == InstType.LMUL_EXT or inst_info.inst_type == InstType.LMUL_TRUNC or
+                inst_info.inst_type == InstType.VGET or inst_info.inst_type == InstType.VSET or
+                inst_info.inst_type == InstType.VCREATE or inst_info.inst_type == InstType.SETVL or
+                inst_info.inst_type == InstType.SETVLMAX):
+            inst_attrs.append("Miscellaneous")
+        if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+            input_nfields_list = list(map(rvvtuple2riftype, in_args_map.items()))
+            input_nfields = "| ".join(map(str, input_nfields_list))
+            output_nfield = rvvtuple2riftype(return_type)
+        else:
+            output_nfield = 1
+            input_nfields = 1
+        if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
+            op_id = f"{inst_info.OP[1:]}"
+        elif "Miscellaneous" in inst_attrs:
+            op_id = f"{inst_info.OP}"
+        elif inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+            op_id = f"{inst_info.OP}"
+        elif inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+            op_id = f"{inst_info.OP}"
+        elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
+            op_id = f"{inst_info.OP[1:]}_v"
+        elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
+            print("inst_info.inst_type.name:")
+            print(inst_info.inst_type.name)
+            print("inst_info.OP:")
+            print(inst_info.OP)
+            op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
+            print("op_id")
+            print(op_id)
+            # if inst_attrs in ["NoVLParameter"]:
+            #   op_id
+        elif inst_info.OP == "vid":
+            op_id = "id_v"
+        elif inst_info.extra_attr & ExtraAttr.CONVERT:
+            x = name.split("_")
+            if "rtz" in x or "rod" in x:
+                suffix = "_".join(x[2:5])
+            else:
+                suffix = "_".join(x[1:4])
+            op_id = f"{inst_info.OP[1:]}_{suffix}"
+        else:
+            op_id = f"{inst_info.OP[1:]}_{output_inst_type[1:].lower()}"
+        op_name = inst_info.OP[1:]
+        op_ret_type_class = rif_return_type.to_type_class()
+        n_in_args = len(in_args_map.keys())
+        if input_nfields is not None:
+            input_nf_suffix = "".join(map(str, list(map(rvvtuple2riftype, in_args_map.items()))))
+            op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+                       f"{inst_info.SEW}"
+                       f"{rif_return_type.short_type_name + in_args_sig_str}"
+                       f"{input_nf_suffix}"
+                       f"{output_nfield}"
+                       )
+        else:
+            op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+                       f"{inst_info.SEW}"
+                       f"{rif_return_type.short_type_name + in_args_sig_str}")
+        patterns = re.compile(r".*_(tu.*|m.*)")
+        match = patterns.search(name)
+        if inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+            inst_attrs.append("SegStoreOperation")
+        if inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
+            inst_attrs.append("SegLoadOperation")
+        if match:
+            if op_type[-2:] == "_m":
+                op_type = op_type[:-2]
+            op_type = op_type + "_" + match.group(1)
+        # todo: vlm vsm
+        if op_id != "lm_" and op_id != "sm_" and op_id != "compress_vv" and op_id != "cpop_m" and n_in_args != 0 \
+                and op_id != "first_m" and op_id != "mv_x_v":
+            output = (f"CUSTOM_OP_TYPE({op_type}, "
+                      f"{op_id}, "
+                      f"{inst_info.SEW}, "
+                      f"{op_ret_type_class}, "
+                      f"{' | '.join(inst_attrs)},"
+                      f"{rif_return_type.rif_type}, "
+                      f"{n_in_args}, "
+                      f"{input_nfields}, "
+                      f"{output_nfield}, "
+                      f"{in_args_str},)")
+            self.fd.write(output)
+            self.fd.write("\n")
+
+    def write(self, text):
+        self.fd.write(text)
+
+    def get_tail_policy_attribute(self, name, inst_info, **kwargs):
+        """
       Gets new suffix for instruction based on name and instruction information.
       """
-      # policy intrinsics go here
-      inst_attrs = []
-      if CompatibleHeaderGenerator.is_policy_func(inst_info):
-          if inst_info.extra_attr & ExtraAttr.IS_TU:
-              inst_attrs.append("TailUndisturbed")
-          if inst_info.extra_attr & ExtraAttr.IS_MA:
-              inst_attrs.append("MaskAgnostic")
-          if inst_info.extra_attr & ExtraAttr.IS_MU:
-              inst_attrs.append("MaskUndisturbed")
-          if inst_info.extra_attr & ExtraAttr.IS_TAMA:
-              inst_attrs.append("MaskedOperation")
-          if inst_info.extra_attr & ExtraAttr.IS_TAMU:
-              inst_attrs.append("MaskUndisturbed")
-          if inst_info.extra_attr & ExtraAttr.IS_TUMA:
-              inst_attrs.append("TailUndisturbed")
-              inst_attrs.append("MaskAgnostic")
-          if inst_info.extra_attr & ExtraAttr.IS_TUMU:
-              inst_attrs.append("TailUndisturbed")
-              inst_attrs.append("MaskUndisturbed")
-          if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-                  inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
-              inst_attrs.append("TailUndisturbed")
-              inst_attrs.append("MaskAgnostic")
-          if inst_info.extra_attr & ExtraAttr.IS_MASK and \
-                  inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
-              inst_attrs.append("MaskedOperation")
-          else:
-            inst_attrs.append("NonmaskedOperation")
-      else:  # non-policy intrinsics go here
-          if inst_info.extra_attr & ExtraAttr.IS_MASK:
-              inst_attrs.append("MaskedOperation")
-          else:
-              inst_attrs.append("NonmaskedOperation")
+        # policy intrinsics go here
+        inst_attrs = []
+        if CompatibleHeaderGenerator.is_policy_func(inst_info):
+            if inst_info.extra_attr & ExtraAttr.IS_TU:
+                inst_attrs.append("TailUndisturbed")
+            if inst_info.extra_attr & ExtraAttr.IS_MA:
+                inst_attrs.append("MaskAgnostic")
+            if inst_info.extra_attr & ExtraAttr.IS_MU:
+                inst_attrs.append("MaskUndisturbed")
+            if inst_info.extra_attr & ExtraAttr.IS_TAMA:
+                inst_attrs.append("MaskedOperation")
+            if inst_info.extra_attr & ExtraAttr.IS_TAMU:
+                inst_attrs.append("MaskUndisturbed")
+            if inst_info.extra_attr & ExtraAttr.IS_TUMA:
+                inst_attrs.append("TailUndisturbed")
+                inst_attrs.append("MaskAgnostic")
+            if inst_info.extra_attr & ExtraAttr.IS_TUMU:
+                inst_attrs.append("TailUndisturbed")
+                inst_attrs.append("MaskUndisturbed")
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TUMA:
+                inst_attrs.append("TailUndisturbed")
+                inst_attrs.append("MaskAgnostic")
+            if inst_info.extra_attr & ExtraAttr.IS_MASK and \
+                    inst_info.extra_attr & ExtraAttr.IS_RED_TAMA:
+                inst_attrs.append("MaskedOperation")
+            else:
+                inst_attrs.append("NonmaskedOperation")
+        else:  # non-policy intrinsics go here
+            if inst_info.extra_attr & ExtraAttr.IS_MASK:
+                inst_attrs.append("MaskedOperation")
+            else:
+                inst_attrs.append("NonmaskedOperation")
 
-      if inst_info.extra_attr & ExtraAttr.REDUCE:
-          inst_attrs.append("ReductionOperation")
-      if inst_info.mem_type == MemType.LOAD:
-          inst_attrs.append("LoadOperation")
-      if inst_info.mem_type == MemType.STORE:
-          inst_attrs.append("StoreOperation")
-      if inst_info.extra_attr & ExtraAttr.HAS_FRM:
-          inst_attrs.append("FRM")
-      if inst_info.extra_attr & ExtraAttr.HAS_VXRM:
-          inst_attrs.append("VXRM")
-      if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
-          inst_attrs.append("NeedMaskedOff")
-      if inst_info.extra_attr & ExtraAttr.NEED_MERGE:
-          inst_attrs.append("NeedMerge")
-      if inst_info.extra_attr & ExtraAttr.MERGE:
-          inst_attrs.append("MergeOperation")
-      if inst_info.extra_attr & ExtraAttr.MAC:
-          inst_attrs.append("MulAddOperation")
-      # if self.return_type == "VOID":
-      #     inst_attrs.append("VoidOperation")
-      return inst_attrs
-      # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
-      #                ScalarInt32)
-  def ignore_zvqmac_section(self):
-    return True
+        if inst_info.extra_attr & ExtraAttr.REDUCE:
+            inst_attrs.append("ReductionOperation")
+        if inst_info.mem_type == MemType.LOAD:
+            inst_attrs.append("LoadOperation")
+        if inst_info.mem_type == MemType.STORE:
+            inst_attrs.append("StoreOperation")
+        if inst_info.extra_attr & ExtraAttr.HAS_FRM:
+            inst_attrs.append("FRM")
+        if inst_info.extra_attr & ExtraAttr.HAS_VXRM:
+            inst_attrs.append("VXRM")
+        if inst_info.extra_attr & ExtraAttr.NEED_MASKOFF:
+            inst_attrs.append("NeedMaskedOff")
+        if inst_info.extra_attr & ExtraAttr.NEED_MERGE:
+            inst_attrs.append("NeedMerge")
+        if inst_info.extra_attr & ExtraAttr.MERGE:
+            inst_attrs.append("MergeOperation")
+        if inst_info.extra_attr & ExtraAttr.MAC:
+            inst_attrs.append("MulAddOperation")
+        # if self.return_type == "VOID":
+        #     inst_attrs.append("VoidOperation")
+        return inst_attrs
+        # CUSTOM_OP_TYPE(AddVX32, 32, SIGNED_INT, OneDInt32, 2, OneDInt32,
+        #                ScalarInt32)
+
+    def ignore_zvqmac_section(self):
+        return True
