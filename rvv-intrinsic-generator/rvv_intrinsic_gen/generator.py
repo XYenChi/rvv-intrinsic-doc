@@ -1555,12 +1555,12 @@ class RIFGenerator(Generator):
                 inst_info.inst_type == InstType.SETVLMAX):
             inst_attrs.append("Miscellaneous")
         if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
-            input_nfields_list = list(map(rvvtuple2riftype, in_args_map.items()))
-            input_nfields = "| ".join(map(str, input_nfields_list))
+            if list(map(rvvtuple2riftype, in_args_map.items())):
+                input_nfield = max(list(map(rvvtuple2riftype, in_args_map.items())))
             output_nfield = rvvtuple2riftype(return_type)
         else:
             output_nfield = 1
-            input_nfields = 1
+            input_nfield = 1
         if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
             op_id = f"{inst_info.OP[1:]}"
         elif "Miscellaneous" in inst_attrs:
@@ -1595,18 +1595,13 @@ class RIFGenerator(Generator):
         op_name = inst_info.OP[1:]
         op_ret_type_class = rif_return_type.to_type_class()
         n_in_args = len(in_args_map.keys())
-        if input_nfields is not None:
-            input_nf_suffix = "".join(map(str, list(map(rvvtuple2riftype, in_args_map.items()))))
-            op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
-                       f"{inst_info.SEW}"
-                       f"{rif_return_type.short_type_name + in_args_sig_str}"
-                       f"{input_nf_suffix}"
-                       f"{output_nfield}"
-                       )
-        else:
-            op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
-                       f"{inst_info.SEW}"
-                       f"{rif_return_type.short_type_name + in_args_sig_str}")
+        input_nf_suffix = "".join(map(str, list(map(rvvtuple2riftype, in_args_map.items()))))
+        op_type = (f"{first_letter_upper(op_name)}{output_inst_type[1:]}"
+                   f"{inst_info.SEW}"
+                   f"{rif_return_type.short_type_name + in_args_sig_str}"
+                   f"{input_nf_suffix}"
+                   f"{output_nfield}"
+                   )
         patterns = re.compile(r".*_(tu.*|m.*)")
         match = patterns.search(name)
         if inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
@@ -1627,7 +1622,7 @@ class RIFGenerator(Generator):
                       f"{' | '.join(inst_attrs)},"
                       f"{rif_return_type.rif_type}, "
                       f"{n_in_args}, "
-                      f"{input_nfields}, "
+                      f"{input_nfield}, "
                       f"{output_nfield}, "
                       f"{in_args_str},)")
             self.fd.write(output)
