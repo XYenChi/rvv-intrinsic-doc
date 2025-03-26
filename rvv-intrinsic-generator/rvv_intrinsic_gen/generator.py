@@ -1456,7 +1456,10 @@ class RIFType:
         self.sig = v[2]
 
     def to_type_class(self):
-        ts = self.rif_type
+        return self.as_type_class(self.rif_type)
+
+    @staticmethod
+    def as_type_class(ts):
         if ts.startswith("OneDInt") or ts.startswith("ScalarInt"):
             return "SIGNED_INT"
         elif ts.startswith("OneDUInt") or ts.startswith("ScalarUInt"):
@@ -1470,7 +1473,7 @@ class RIFType:
         elif ts == "Void":
             return "VOID"
         else:
-            raise Exception(f"Unhandled: {self.rif_type}")
+            raise Exception(f"Unhandled: {ts}")
 
 
 def rvvtype2sig(typename):
@@ -1572,13 +1575,7 @@ class RIFGenerator(Generator):
         elif inst_info.mem_type == MemType.STORE or inst_info.mem_type == MemType.LOAD:
             op_id = f"{inst_info.OP[1:]}_v"
         elif inst_info.OP.startswith("vmv") or inst_info.OP.startswith("vfmv"):
-            print("inst_info.inst_type.name:")
-            print(inst_info.inst_type.name)
-            print("inst_info.OP:")
-            print(inst_info.OP)
             op_id = f"{inst_info.OP[1:]}_{'_'.join(output_inst_type.lower())}"
-            print("op_id")
-            print(op_id)
             # if inst_attrs in ["NoVLParameter"]:
             #   op_id
         elif inst_info.OP == "vid":
@@ -1614,17 +1611,30 @@ class RIFGenerator(Generator):
             op_type = op_type + "_" + match.group(1)
         # todo: vlm vsm
         if op_id != "lm_" and op_id != "sm_" and op_id != "compress_vv" and op_id != "cpop_m" and n_in_args != 0 \
-                and op_id != "first_m" and op_id != "mv_x_v":
-            output = (f"CUSTOM_OP_TYPE({op_type}, "
-                      f"{op_id}, "
-                      f"{inst_info.SEW}, "
-                      f"{op_ret_type_class}, "
-                      f"{' | '.join(inst_attrs)},"
-                      f"{rif_return_type.rif_type}, "
-                      f"{n_in_args}, "
-                      f"{input_nfield}, "
-                      f"{output_nfield}, "
-                      f"{in_args_str},)")
+                and op_id != "first_m" and op_id != "mv_x_v" and op_id != "vsetvl":
+            if rif_return_type.rif_type == "Void":
+                seg_op_ret_type_class = RIFType.as_type_class(in_args_str.split(', ')[-1])
+                output = (f"CUSTOM_OP_TYPE({op_type}, "
+                          f"{op_id}, "
+                          f"{inst_info.SEW}, "
+                          f"{seg_op_ret_type_class}, "
+                          f"{' | '.join(inst_attrs)},"
+                          f"{in_args_str.split(', ')[-1]}, "
+                          f"{n_in_args}, "
+                          f"{input_nfield}, "
+                          f"{output_nfield}, "
+                          f"{in_args_str},)")
+            else:
+                output = (f"CUSTOM_OP_TYPE({op_type}, "
+                          f"{op_id}, "
+                          f"{inst_info.SEW}, "
+                          f"{op_ret_type_class}, "
+                          f"{' | '.join(inst_attrs)},"
+                          f"{rif_return_type.rif_type}, "
+                          f"{n_in_args}, "
+                          f"{input_nfield}, "
+                          f"{output_nfield}, "
+                          f"{in_args_str},)")
             self.fd.write(output)
             self.fd.write("\n")
 
