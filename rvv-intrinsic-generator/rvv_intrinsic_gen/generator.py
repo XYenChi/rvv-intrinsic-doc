@@ -1567,7 +1567,7 @@ class RIFGenerator(Generator):
         if inst_info.extra_attr & ExtraAttr.INT_EXTENSION:
             op_id = f"{inst_info.OP[1:]}"
         elif "Miscellaneous" in inst_attrs:
-            op_id = f"{inst_info.OP}"
+            op_id = f"{inst_info.OP[1:]}"
         elif inst_info.mem_type == MemType.STORE and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
             op_id = f"{inst_info.OP}"
         elif inst_info.mem_type == MemType.LOAD and any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
