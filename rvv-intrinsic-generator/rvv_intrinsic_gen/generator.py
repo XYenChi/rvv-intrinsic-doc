@@ -1581,6 +1581,9 @@ class RIFGenerator(Generator):
         elif inst_info.OP == "vid":
             op_id = "id_v"
         elif inst_info.extra_attr & ExtraAttr.CONVERT:
+            print("QQQQQ:")
+            print(inst_info.OP[1:])
+            print(in_args_map)
             x = name.split("_")
             if "rtz" in x or "rod" in x:
                 suffix = "_".join(x[2:5])
@@ -1618,7 +1621,7 @@ class RIFGenerator(Generator):
                           f"{op_id}, "
                           f"{inst_info.SEW}, "
                           f"{seg_op_ret_type_class}, "
-                          f"{' | '.join(inst_attrs)},"
+                          f"{' | '.join(inst_attrs)}, "
                           f"{in_args_str.split(', ')[-1]}, "
                           f"{n_in_args}, "
                           f"{input_nfield}, "
@@ -1629,7 +1632,7 @@ class RIFGenerator(Generator):
                           f"{op_id}, "
                           f"{inst_info.SEW}, "
                           f"{op_ret_type_class}, "
-                          f"{' | '.join(inst_attrs)},"
+                          f"{' | '.join(inst_attrs)}, "
                           f"{rif_return_type.rif_type}, "
                           f"{n_in_args}, "
                           f"{input_nfield}, "
@@ -1697,6 +1700,23 @@ class RIFGenerator(Generator):
             inst_attrs.append("MergeOperation")
         if inst_info.extra_attr & ExtraAttr.MAC:
             inst_attrs.append("MulAddOperation")
+        if (inst_info.inst_type == InstType.WVV or inst_info.inst_type == InstType.WVF or
+                inst_info.inst_type == InstType.WVI or inst_info.inst_type == InstType.WVX or
+                inst_info.inst_type == InstType.WWV or inst_info.inst_type == InstType.WWF or
+                inst_info.inst_type == InstType.WWX or inst_info.inst_type == InstType.W1VW1):
+            inst_attrs.append("WideningOperation")
+        if (inst_info.inst_type == InstType.VVVM or inst_info.inst_type == InstType.VVXM or
+            inst_info.inst_type == InstType.VVFM):
+            inst_attrs.append("AddWithCarry")
+        if (inst_info.inst_type == InstType.VWV or inst_info.inst_type == InstType.VWX or
+                inst_info.inst_type == InstType.VWF):
+            inst_attrs.append("NarrowingOperation")
+        if (inst_info.inst_type == InstType.QV or inst_info.inst_type == InstType.OV or inst_info.inst_type == InstType.WV):
+            inst_attrs.append("ExtensionOperation")
+        # if (inst_info.inst_type == InstType.VVF):
+        #     inst_attrs.append("FloadOperation")
+        # if (inst_info.inst_type == InstType.MM ):
+        #     inst_attrs.append("MaskOp")
         # if self.return_type == "VOID":
         #     inst_attrs.append("VoidOperation")
         return inst_attrs
