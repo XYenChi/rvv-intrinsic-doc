@@ -70,8 +70,8 @@ def render(G,
                   required_ext=required_ext_list),
               name="{OP}_{S_TYPE}_s_{TYPE}{SEW}m{LMUL}_{TYPE}{SEW}".format_map(
                   args),
-              return_type=type_helper.s,
-              vs1=type_helper.v)
+              return_type=type_helper.v,
+              vs1=type_helper.s)
         else:
           G.func(
               InstInfo.get(
