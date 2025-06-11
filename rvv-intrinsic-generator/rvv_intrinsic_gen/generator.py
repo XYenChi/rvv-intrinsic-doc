@@ -1557,6 +1557,8 @@ class RIFGenerator(Generator):
                 inst_info.inst_type == InstType.VCREATE or inst_info.inst_type == InstType.SETVL or
                 inst_info.inst_type == InstType.SETVLMAX):
             inst_attrs.append("Miscellaneous")
+        if inst_info.inst_type == InstType.MMM or inst_info.inst_type == InstType.MM:
+            inst_attrs.append("LogicalMaskOperation")
         if any(map(is_tuple_type, [return_type] + list(kwargs.values()))):
             if list(map(rvvtuple2riftype, in_args_map.items())):
                 input_nfield = max(list(map(rvvtuple2riftype, in_args_map.items())))
@@ -1581,9 +1583,6 @@ class RIFGenerator(Generator):
         elif inst_info.OP == "vid":
             op_id = "id_v"
         elif inst_info.extra_attr & ExtraAttr.CONVERT:
-            print("QQQQQ:")
-            print(inst_info.OP[1:])
-            print(in_args_map)
             x = name.split("_")
             if "rtz" in x or "rod" in x:
                 suffix = "_".join(x[2:5])
@@ -1613,6 +1612,11 @@ class RIFGenerator(Generator):
                 op_type = op_type[:-2]
             op_type = op_type + "_" + match.group(1)
         # todo: vlm vsm
+        if op_id == "mmv_m":
+            print("inst info inst type:")
+            print(inst_info.inst_type)
+            print("inst info:")
+            print(inst_info.extra_attr)
         if op_id != "lm_" and op_id != "sm_" and op_id != "compress_vv" and op_id != "cpop_m" and n_in_args != 0 \
                 and op_id != "first_m" and op_id != "mv_x_v" and op_id != "vsetvl":
             if rif_return_type.rif_type == "Void":
@@ -1681,7 +1685,8 @@ class RIFGenerator(Generator):
                 inst_attrs.append("MaskedOperation")
             else:
                 inst_attrs.append("NonmaskedOperation")
-
+        if inst_info.extra_attr & ExtraAttr.CONVERT:
+            inst_attrs.append("CONVERT")
         if inst_info.extra_attr & ExtraAttr.REDUCE:
             inst_attrs.append("ReductionOperation")
         if inst_info.mem_type == MemType.LOAD:

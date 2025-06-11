@@ -71,7 +71,8 @@ def render(G,
               name="{OP}_{S_TYPE}_s_{TYPE}{SEW}m{LMUL}_{TYPE}{SEW}".format_map(
                   args),
               return_type=type_helper.v,
-              vs1=type_helper.s)
+              vs1=type_helper.s,
+              vl=type_helper.size_t)
         else:
           G.func(
               InstInfo.get(
@@ -80,7 +81,8 @@ def render(G,
               name="{OP}_{S_TYPE}_s_{TYPE}{SEW}m{LMUL}_{TYPE}{SEW}".format_map(
                   args),
               return_type=type_helper.s,
-              vs1=type_helper.v)
+              vs1=type_helper.v,
+              vl=type_helper.size_t)
         G.func(
             InstInfo.get(
                 args, decorator, vs_inst_type, required_ext=required_ext_list),
